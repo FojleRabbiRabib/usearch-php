@@ -1,0 +1,53 @@
+# Build artifacts
+*.so
+*.so.*
+*.a
+*.la
+*.lo
+*.o
+*.obj
+*.dep
+.libs/
+modules/
+/build/
+autom4te.cache/
+autom4te.cache
+config.guess
+config.h
+config.h.in
+config.log
+config.nice
+config.status
+config.sub
+configure
+configure.ac
+libtool
+ltmain.sh
+Makefile
+Makefile.fragments
+Makefile.objects
+missing
+mkinstalldirs
+run-tests.php
+
+# Vendored upstream source (fetched and hash-verified by tools/fetch-usearch.sh)
+/vendor-src/
+
+# Composer dependencies
+/vendor/
+/dist/
+tools/PHP-Parser*/
+
+.env
+.env.*
+*.local
+
+.claude/worktrees/
+.claude/settings.local.json
+
+# Editor / OS
+.DS_Store
+*.swp
+
+.mcpgate
+.playwright-mcp

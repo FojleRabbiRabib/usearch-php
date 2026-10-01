@@ -1,0 +1,24 @@
+usearch-php — In-process vector similarity search for PHP
+https://github.com/FojleRabbiRabib/usearch-php
+
+Copyright 2026 Fojle Rabbi (Rabib)
+
+This product includes software developed as part of the USearch project.
+
+  USearch
+  https://github.com/unum-cloud/usearch
+  Copyright 2023-2026 Unum Cloud
+  Licensed under the Apache License, Version 2.0
+  (see the vendored source: LICENSE at the repository root).
+  Vendored and statically linked; version pins and source hashes are
+  recorded in tools/fetch-usearch.sh.
+
+  NumKong
+  https://github.com/ashvardanian/NumKong
+  Copyright 2024-2026 Ash Vardanian
+  Licensed under the Apache License, Version 2.0.
+
+  StringZilla
+  https://github.com/ashvardanian/stringzilla
+  Copyright 2023-2026 Ash Vardanian
+  Licensed under the Apache License, Version 2.0.

@@ -1,0 +1,38 @@
+{
+  "name": "usearch-php/usearch",
+  "description": "In-process vector similarity search for PHP, backed by a statically linked build of USearch",
+  "type": "php-ext",
+  "license": "Apache-2.0",
+  "keywords": ["vector", "search", "similarity", "hnsw", "ann", "embeddings", "usearch", "rag"],
+  "homepage": "https://github.com/FojleRabbiRabib/usearch-php",
+  "authors": [
+    {
+      "name": "Fojle Rabbi (Rabib)",
+      "role": "Lead"
+    }
+  ],
+  "support": {
+    "issues": "https://github.com/FojleRabbiRabib/usearch-php/issues",
+    "source": "https://github.com/FojleRabbiRabib/usearch-php",
+    "docs": "https://github.com/FojleRabbiRabib/usearch-php/blob/main/docs/usage.md"
+  },
+  "php-ext": {
+    "extension-name": "usearch",
+    "download-url-method": ["pre-packaged-binary", "composer-default"]
+  },
+  "require": {
+    "php": ">=8.3"
+  },
+  "require-dev": {
+    "phpstan/phpstan": "^2.1",
+    "squizlabs/php_codesniffer": "^3.13"
+  },
+  "config": {
+    "allow-plugins": {},
+    "sort-packages": true
+  },
+  "scripts": {
+    "lint:php": "phpcs",
+    "analyse": "phpstan analyse"
+  }
+}

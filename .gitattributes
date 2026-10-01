@@ -1,0 +1,15 @@
+# Normalize line endings; LF in the repo
+* text=auto eol=lf
+
+*.sh   text eol=lf
+*.c    text eol=lf
+*.h    text eol=lf
+*.cpp  text eol=lf
+*.php  text eol=lf
+*.m4   text eol=lf
+
+# Binaries
+*.so     binary
+*.a      binary
+*.tar.gz binary
+*.usearch binary
