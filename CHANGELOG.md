@@ -25,4 +25,28 @@ Releases encode the vendored USearch version: `v0.1.0+usearch.2.26.2`.
   `expansionAdd()`, `expansionSearch()`, `threadsAdd()`, `threadsSearch()`, `memoryUsage()`,
   `serializedLength()`, `hardwareAcceleration()`.
 - PIE-compatible `composer.json` manifest and `package.xml` for PECL tooling.
-- Full phpt behavioural test suite and Valgrind memory churn test.
+- Full phpt behavioural test suite and Valgrind memory churn test, covering empty indexes,
+  oversized `k`, non-finite vector components, multi-key groups, corrupt and truncated index files,
+  and the refused `clone`.
+- `recall@10` quality gate over Fashion-MNIST (MIT), fetched and SHA-256-verified by
+  `tools/fetch-dataset.sh`. Measured 0.9990 mean at 30,000 build vectors.
+- `tools/benchmark.php` and `tools/benchmark-compare.php`, reporting real `VmRSS`/`VmHWM` from
+  `/proc/self/status` rather than Zend MM alone.
+
+### Changed
+- `usearch_arginfo.h` is now generated from `usearch.stub.php` rather than hand-maintained, and a
+  CI step fails on drift. Reflection signatures for `add()`, `threadsAdd()`, `threadsSearch()`, and
+  `changeMetric()` were corrected to match the stub.
+- `search()` clamps an oversized `count` to the index size instead of attempting an allocation that
+  fails uncatchably.
+
+### Fixed
+- `clone $index` raised a segmentation fault on destruction; cloning is now refused by the engine
+  with `Error: Trying to clone an uncloneable object of class Usearch\Index`.
+- `threadsAdd()` / `threadsSearch()` reported the expansion value instead of a thread count, and
+  their setters were unguarded on a read-only `view()` index.
+- `expansionSearch()` lacked the read-only guard `expansionAdd()` applies.
+- Haversine indexes created without an explicit `dimensions` were unusable through the marshalling
+  layer.
+- `load()` / `view()` with a corrupt or truncated file now raise `Usearch\Exception` rather than
+  reading past the mapping.

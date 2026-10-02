@@ -49,6 +49,12 @@ jobs:
           valgrind --leak-check=full --error-exitcode=1 \
             php -n -d extension=modules/usearch.so tests/memory/churn.php
 
+      - name: Fetch and verify Fashion-MNIST (MIT)
+        run: ./tools/fetch-dataset.sh
+
+      - name: Recall@10 quality gate
+        run: php -n -d extension=modules/usearch.so tests/quality/recall.php
+
   quality:
     name: Code style and static analysis
     runs-on: ubuntu-24.04
@@ -76,6 +82,11 @@ jobs:
             php_usearch.h usearch_internal.h usearch_bridge.h \
             usearch.c usearch_index.c usearch_vector.c usearch_enums.c usearch_exception.c \
             usearch_bridge.cpp
+
+      - name: Arginfo drift gate
+        run: |
+          php tools/gen_stub.php usearch.stub.php
+          git diff --exit-code usearch_arginfo.h
 
       - name: PHP linting
         run: |

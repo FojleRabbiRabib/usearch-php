@@ -35,6 +35,7 @@ is reproducible from the pins in `tools/fetch-usearch.sh`.
 | `tools/` | Fetch, build, test, and gate drivers |
 | `tests/phpt/` | Behavioural suite |
 | `tests/memory/churn.php` | Valgrind leak-gate driver |
+| `tests/quality/recall.php` | recall@10 gate over Fashion-MNIST |
 | `docs/` | Shipped product manuals |
 
 Files in the repository root that are planning records stay **untracked and never committed**.
@@ -58,12 +59,15 @@ Files in the repository root that are planning records stay **untracked and neve
 ```bash
 php tools/test-phpt.php
 valgrind --leak-check=full --error-exitcode=1 php -n -d extension=modules/usearch.so tests/memory/churn.php
+./tools/fetch-dataset.sh && php -n -d extension=modules/usearch.so tests/quality/recall.php
 clang-format-14 --dry-run --Werror usearch.c usearch_index.c usearch_vector.c usearch_enums.c usearch_exception.c usearch_bridge.cpp php_usearch.h usearch_internal.h usearch_bridge.h
 vendor/bin/phpcs && vendor/bin/phpstan analyse --no-progress
 ```
 
 Plus the ELF assertions: RELRO, BIND_NOW, non-executable stack, no RPATH, and only `get_module`
-exported (asserted by `tools/build.sh` and `tools/gate-symbols.sh`).
+exported (asserted by `tools/build.sh` and `tools/gate-symbols.sh`). The recall gate needs the
+Fashion-MNIST dataset, which `tools/fetch-dataset.sh` fetches and SHA-256-verifies into the
+gitignored `vendor-data/`; it is never committed.
 
 ## Licence and attribution
 
