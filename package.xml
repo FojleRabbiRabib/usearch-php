@@ -86,6 +86,11 @@ Initial release of usearch-php:
    <file role="test" name="tests/phpt/004-view-readonly.phpt"/>
    <file role="test" name="tests/phpt/005-dimension-mismatch.phpt"/>
    <file role="test" name="tests/phpt/006-remove-rename.phpt"/>
+   <file role="test" name="tests/phpt/007-empty-and-oversized-k.phpt"/>
+   <file role="test" name="tests/phpt/008-nonfinite.phpt"/>
+   <file role="test" name="tests/phpt/009-multi-keys.phpt"/>
+   <file role="test" name="tests/phpt/010-corrupt-file.phpt"/>
+   <file role="test" name="tests/phpt/011-clone-refused.phpt"/>
   </dir>
  </contents>
  <dependencies>
