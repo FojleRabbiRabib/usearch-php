@@ -33,6 +33,9 @@ run-tests.php
 # Vendored upstream source (fetched and hash-verified by tools/fetch-usearch.sh)
 /vendor-src/
 
+# Recall-gate dataset (fetched and hash-verified by tools/fetch-dataset.sh)
+/vendor-data/
+
 # Composer dependencies
 /vendor/
 /dist/
