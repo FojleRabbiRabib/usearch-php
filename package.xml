@@ -18,8 +18,8 @@ index persistence, and runtime SIMD dispatch (AVX-512, AVX2, NEON, SVE).</descri
   <email>36526962+FojleRabbiRabib@users.noreply.github.com</email>
   <active>yes</active>
  </lead>
- <date>2026-10-01</date>
- <time>16:00:00</time>
+ <date>2026-10-03</date>
+ <time>12:00:00</time>
  <version>
   <release>0.1.0</release>
   <api>0.1.0</api>
@@ -93,6 +93,7 @@ Initial release of usearch-php:
    <file role="test" name="tests/phpt/010-corrupt-file.phpt"/>
    <file role="test" name="tests/phpt/011-clone-refused.phpt"/>
    <file role="test" name="tests/phpt/012-thread-readback.phpt"/>
+   <file role="test" name="tests/phpt/013-unknown-option.phpt"/>
   </dir>
  </contents>
  <dependencies>
