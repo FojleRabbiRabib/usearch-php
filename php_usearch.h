@@ -33,13 +33,19 @@ extern zend_class_entry *usearch_ce_scalar;
  * read_only is set on indexes opened via view() to prevent SIGSEGV on mmap.
  * metric_kind is retained because upstream exposes no getter for it, and
  * distance() needs it to build its metric; an unknown kind would call through
- * a null function pointer. The thread budgets are retained for the same
- * reason: upstream has change_threads_* setters but no getters, so a truthful
- * read-back has to be remembered here. 0 means "automatic". */
+ * a null function pointer. scalar_kind is retained for the same reason and the
+ * same failure: distance() must build its metric for the format the vectors are
+ * actually compared in, which is the index's quantization — not f32, the
+ * marshalling format. On a B1 index the (Hamming, f32) combination has no
+ * upstream kernel at all, so the old hardcode was undefined behaviour, not a
+ * wrong answer. The thread budgets are retained for the same reason: upstream
+ * has change_threads_* setters but no getters, so a truthful read-back has to
+ * be remembered here. 0 means "automatic". */
 typedef struct _usearch_index_object {
 	void *handle;
 	bool read_only;
 	zend_long metric_kind;
+	zend_long scalar_kind;
 	zend_long threads_add;
 	zend_long threads_search;
 	zend_object std;

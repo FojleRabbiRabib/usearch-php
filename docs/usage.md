@@ -47,18 +47,43 @@ keys leave the library default in place**; unknown keys raise `ValueError`.
 
 ## 3. Metric spaces — `Usearch\Metric`
 
-| Case | Value | Space | Notes |
-|---|---|---|---|
-| `Cosine` | 1 | Angular | Vectors normalized internally. |
-| `Ip` | 2 | Inner product | For pre-normalized maximum-inner-product search. |
-| `L2sq` | 3 | Squared Euclidean | Monotonic with L2; cheaper (no sqrt). |
-| `Haversine` | 4 | Great-circle | Geo coordinates; `dimensions` may be omitted. |
-| `Divergence` | 5 | KL divergence | Probability distributions. |
-| `Pearson` | 6 | Correlation | Centered cosine. |
-| `Jaccard` | 7 | Set similarity | Binary/uint vectors. |
-| `Hamming` | 8 | Bit differences | Binary vectors (`Scalar::B1`). |
-| `Tanimoto` | 9 | Generalized Jaccard | Weighted sets. |
-| `Sorensen` | 10 | Dice coefficient | Weighted sets. |
+The `Value` column is the upstream kind constant, which is what the index file records. The
+`Scalars` column lists the quantization formats upstream selects a kernel for: a metric outside
+that set has no implementation and the index cannot be used. `Gated` marks the cases with a
+value-level assertion in `tests/quality/metrics.php`.
+
+| Case | Value | Distance returned | Scalars | Gated |
+|---|---|---|---|---|
+| `Cosine` | 1 | `1 − a·b / (‖a‖·‖b‖)` | F32, F64, F16, BF16, E5M2, E4M3, E3M2, E2M3, I8, U8 | yes |
+| `Ip` | 2 | `1 − a·b` (note the offset: identical vectors score `1 − ‖a‖²`) | as `Cosine` | yes |
+| `L2sq` | 3 | `Σ(aᵢ − bᵢ)²` | as `Cosine` | yes |
+| `Haversine` | 4 | Angular distance in **radians** at unit radius | F32, F64 only | yes |
+| `Divergence` | 5 | Jensen–Shannon, ε-smoothed | float kinds only — no I8/U8 | yes |
+| `Pearson` | 6 | `1 − r` (centered cosine) | as `Cosine` | yes |
+| `Jaccard` | 7 | `1 − \|A ∩ B\| / \|A ∪ B\|` — bound to the **same kernel as `Tanimoto`** | B1 only | yes |
+| `Hamming` | 8 | `popcount(A ⊕ B)` | B1 only | yes |
+| `Tanimoto` | 9 | `1 − \|A ∩ B\| / \|A ∪ B\|` | B1 only | yes |
+| `Sorensen` | 10 | `1 − 2·\|A ∩ B\| / (\|A\| + \|B\|)` | B1 only | yes |
+
+`Jaccard` and `Tanimoto` are not merely similar: upstream dispatches both kind constants to one
+function, so on a given index they return identical distances.
+
+The `Value` column is the `Usearch\Metric` case value, which is the **C API's** kind constant. It is
+not the internal C++ constant — the two enums do not share numbering (C: `b1 = 5`, `f32 = 1`;
+C++: `b1x8_k = 1`, `f32_k = 11`). Nothing in this extension mixes them, but the distinction matters
+if you compare values against upstream's headers.
+
+**`B1` is a different kind of input, not a smaller one.** The four binary metrics read bit-packed
+words, so `Scalar::B1` is required and a float-only index cannot use them. At `add()` time a
+component becomes a set bit when it is **greater than zero** — negatives and `0` clear the bit,
+`INF` sets it, and `NAN` clears it (`NAN > 0` is false in IEEE arithmetic, whatever a value's
+magnitude suggests). `get()` reads set bits back as `1.0` and unset bits as `0.0`. The original
+magnitudes are not recoverable, which is the point of the format.
+
+`distance()` accepts vectors in the array or packed-f32 form **regardless of the index's
+quantization**: it quantizes them with the same rules `add()` uses before measuring. On a `B1` index
+that means the components are thresholded at zero first, so `distance()` and `search()` always
+answer in the same format.
 
 ## 4. Quantization — `Usearch\Scalar`
 

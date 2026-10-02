@@ -29,6 +29,7 @@ declare(strict_types=1);
 
 use Usearch\Index;
 use Usearch\Metric;
+use Usearch\Scalar;
 
 const TOLERANCE = 1e-6;
 
@@ -111,7 +112,121 @@ function refPearson(array $a, array $b): float
     return 1.0 - $num / sqrt($da * $db);
 }
 
+/* The binary-set metrics operate on B1 words. The quantization rule is
+ * upstream's own: a component sets its bit when it is strictly greater than
+ * zero (cast_to_b1x8_gt in index_plugins.hpp), so the reference implementations
+ * below derive the bit vector from the original floats with the same rule and
+ * count set operations over it. */
+
+/**
+ * @param list<float> $a
+ * @return list<int>
+ */
+function toBits(array $a): array
+{
+    return array_map(fn (float $v): int => $v > 0.0 ? 1 : 0, $a);
+}
+
+/** popcount(a XOR b): the number of positions where the bit vectors differ.
+ * @param list<float> $a
+ * @param list<float> $b
+ */
+function refHamming(array $a, array $b): float
+{
+    return (float) count(array_keys(array_diff_assoc(toBits($a), toBits($b))));
+}
+
+/**
+ * 1 - |A∩B| / |A∪B|. Upstream dispatches Jaccard and Tanimoto to the same
+ * kernel, so one reference serves both and a cross-check pins their equality.
+ *
+ * @param list<float> $a
+ * @param list<float> $b
+ */
+function refTanimoto(array $a, array $b): float
+{
+    $ba = toBits($a);
+    $bb = toBits($b);
+    $intersection = 0;
+    $union = 0;
+    foreach ($ba as $i => $x) {
+        $intersection += $x & $bb[$i];
+        $union += $x | $bb[$i];
+    }
+    return $union === 0 ? 0.0 : 1.0 - $intersection / $union;
+}
+
+/**
+ * 1 - 2|A∩B| / (|A| + |B|), the Sorensen-Dice coefficient.
+ *
+ * @param list<float> $a
+ * @param list<float> $b
+ */
+function refSorensen(array $a, array $b): float
+{
+    $ba = toBits($a);
+    $bb = toBits($b);
+    $intersection = 0;
+    $totalA = 0;
+    $totalB = 0;
+    foreach ($ba as $i => $x) {
+        $intersection += $x & $bb[$i];
+        $totalA += $x;
+        $totalB += $bb[$i];
+    }
+    $sum = $totalA + $totalB;
+    return $sum === 0 ? 0.0 : 1.0 - 2.0 * $intersection / $sum;
+}
+
+/**
+ * Jensen-Shannon divergence, epsilon-smoothed the way upstream smooths it:
+ * m = (p+q)/2 + eps, each half is p*ln((p+eps)/m), averaged. epsilon is
+ * FLT_EPSILON upstream (result_t is f32); PHP_FLOAT_EPSILON differs in the
+ * 10th decimal of the result, well inside this gate's tolerance.
+ *
+ * @param list<float> $a
+ * @param list<float> $b
+ */
+function refDivergence(array $a, array $b): float
+{
+    $eps = PHP_FLOAT_EPSILON;
+    $kldPm = 0.0;
+    $kldQm = 0.0;
+    foreach ($a as $i => $p) {
+        $q = $b[$i];
+        $m = ($p + $q) / 2.0 + $eps;
+        $kldPm += $p * log(($p + $eps) / $m);
+        $kldQm += $q * log(($q + $eps) / $m);
+    }
+    return ($kldPm + $kldQm) / 2.0;
+}
+
 $failures = 0;
+
+/**
+ * @param callable(list<float>, list<float>): float $reference
+ * @param list<float> $a
+ * @param list<float> $b
+ */
+function checkQuantized(
+    string $label,
+    Metric $metric,
+    Scalar $quantization,
+    array $a,
+    array $b,
+    callable $reference,
+): void {
+    global $failures;
+    $index = new Index(['dimensions' => count($a), 'metric' => $metric, 'quantization' => $quantization]);
+    $got = $index->distance($a, $b);
+    $want = $reference($a, $b);
+    if (is_nan($got) || abs($got - $want) > TOLERANCE) {
+        printf("FAIL %-34s got %.9f, expected %.9f\n", $label, $got, $want);
+        $failures++;
+        return;
+    }
+    printf("PASS %-34s %.9f\n", $label, $got);
+}
 
 /**
  * @param callable(list<float>, list<float>): float $reference
@@ -160,6 +275,52 @@ check(
     $geoB,
     refHaversine(...)
 );
+
+check('Divergence (JS)', Metric::Divergence, [0.2, 0.3, 0.5], [0.6, 0.3, 0.1], refDivergence(...));
+check('Divergence (identical)', Metric::Divergence, [0.2, 0.3, 0.5], [0.2, 0.3, 0.5], refDivergence(...));
+
+/* The binary-set metrics need Scalar::B1 and exist only over it. These were
+ * the last unpinned cases: distance() on a quantized index once returned NaN
+ * for three of them and read past the vector for the fourth, because the
+ * buffers were quantized through the wrong scalar kind — the C and C++ kind
+ * enums do not share numbering. These assertions are what make that failure
+ * mode visible instead of silent. */
+$bitsA = [1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0];
+$bitsB = [0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0, 0.0, 1.0];
+$bitsC = $bitsA;
+$bitsC[0] = 0.0;                /* one bit cleared: differs from $bitsA by 1 */
+$bitsNeg = array_fill(0, 16, -1.0);  /* every component <= 0: all bits clear */
+
+checkQuantized('Hamming (opposite)', Metric::Hamming, Scalar::B1, $bitsA, $bitsB, refHamming(...));
+checkQuantized('Hamming (one bit)', Metric::Hamming, Scalar::B1, $bitsA, $bitsC, refHamming(...));
+checkQuantized('Hamming (cleared)', Metric::Hamming, Scalar::B1, $bitsA, $bitsNeg, refHamming(...));
+checkQuantized('Tanimoto (opposite)', Metric::Tanimoto, Scalar::B1, $bitsA, $bitsB, refTanimoto(...));
+checkQuantized('Tanimoto (one bit)', Metric::Tanimoto, Scalar::B1, $bitsA, $bitsC, refTanimoto(...));
+checkQuantized('Jaccard (one bit)', Metric::Jaccard, Scalar::B1, $bitsA, $bitsC, refTanimoto(...));
+checkQuantized('Sorensen (opposite)', Metric::Sorensen, Scalar::B1, $bitsA, $bitsB, refSorensen(...));
+checkQuantized('Sorensen (one bit)', Metric::Sorensen, Scalar::B1, $bitsA, $bitsC, refSorensen(...));
+
+/* Non-positive components clear their bit, so an all-negative vector is empty. */
+checkQuantized(
+    'Hamming (negatives are 0 bits)',
+    Metric::Hamming,
+    Scalar::B1,
+    $bitsNeg,
+    array_fill(0, 16, 0.0),
+    refHamming(...)
+);
+
+/* Jaccard and Tanimoto are dispatched to one kernel upstream, so equality on
+ * every pair is the pinned contract, not a coincidence of this fixture. */
+foreach ([[$bitsA, $bitsB], [$bitsA, $bitsC], [$bitsA, $bitsNeg]] as $pair) {
+    $ji = new Index(['dimensions' => 16, 'metric' => Metric::Jaccard, 'quantization' => Scalar::B1]);
+    $ti = new Index(['dimensions' => 16, 'metric' => Metric::Tanimoto, 'quantization' => Scalar::B1]);
+    if ($ji->distance($pair[0], $pair[1]) !== $ti->distance($pair[0], $pair[1])) {
+        printf("FAIL %-26s Jaccard and Tanimoto disagree\n", 'shared kernel');
+        $failures++;
+    }
+}
+printf("PASS %-34s identical to Tanimoto\n", 'Jaccard shares the kernel');
 
 /* The case values are the upstream kind constants. Asserting the literals is
  * the point: this is the mapping that a wrong enum body would change. */

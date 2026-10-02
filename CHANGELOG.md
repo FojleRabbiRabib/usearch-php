@@ -44,6 +44,13 @@ Releases encode the vendored USearch version: `v0.1.0+usearch.2.26.2`.
   fails uncatchably.
 
 ### Fixed
+- `distance()` on any quantized index other than `F32` measured the wrong values; on a `B1` index
+  with a binary-set metric it returned `NaN` for `Hamming`, `Jaccard`, and `Tanimoto`, and read past
+  the end of the vector for `Sorensen`. Two faults compounded: the call hardcoded `F32` as the
+  buffer format regardless of the index's quantization, and the C-visible scalar-kind enum was
+  being reinterpreted as the internal C++ enum, which does not share its numbering (C `b1 = 5`
+  against C++ `b1x8_k = 1`), so `B1` vectors were quantized as a different width entirely. Buffers
+  are now quantized through the core's own casters and measured through the index's own metric.
 - `clone $index` raised a segmentation fault on destruction; cloning is now refused by the engine
   with `Error: Trying to clone an uncloneable object of class Usearch\Index`.
 - `threadsAdd()` / `threadsSearch()` reported the expansion value instead of a thread count, and

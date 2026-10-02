@@ -16,6 +16,7 @@ static zend_object *usearch_index_create_object(zend_class_entry *ce)
 	intern->handle = NULL;
 	intern->read_only = false;
 	intern->metric_kind = usearch_metric_cos_k;
+	intern->scalar_kind = usearch_scalar_f32_k;
 	intern->threads_add = 0;
 	intern->threads_search = 0;
 	zend_object_std_init(&intern->std, ce);
@@ -152,6 +153,7 @@ PHP_METHOD(Usearch_Index, __construct)
 		return;
 	}
 	intern->metric_kind = (zend_long)opts.metric_kind;
+	intern->scalar_kind = (zend_long)opts.quantization;
 }
 
 PHP_METHOD(Usearch_Index, add)
@@ -548,6 +550,7 @@ PHP_METHOD(Usearch_Index, load)
 		usearch_metadata(path, &stored, &error);
 		if (usearch_check_error(&error) == SUCCESS) {
 			intern->metric_kind = (zend_long)stored.metric_kind;
+			intern->scalar_kind = (zend_long)stored.quantization;
 		}
 	}
 }
@@ -583,6 +586,7 @@ PHP_METHOD(Usearch_Index, view)
 		usearch_metadata(path, &stored, &error);
 		if (usearch_check_error(&error) == SUCCESS) {
 			intern->metric_kind = (zend_long)stored.metric_kind;
+			intern->scalar_kind = (zend_long)stored.quantization;
 		}
 	}
 }
@@ -930,8 +934,68 @@ PHP_METHOD(Usearch_Index, distance)
 		return;
 	}
 
-	d = usearch_distance(buf_a, buf_b, usearch_scalar_f32_k, dims,
-						 (usearch_metric_kind_t)intern->metric_kind, &error);
+	/* usearch_distance() does not convert: its scalar_kind argument says what
+	 * the buffers already hold, and it builds a metric over exactly that. So
+	 * the buffers must be in the index's stored format before the call, which
+	 * means the marshalled f32 has to be quantized first. Passing the f32
+	 * buffer with the index's scalar kind — or hardcoding f32 as this did —
+	 * both misdescribe the memory; f32 is only correct for an f32 index, and
+	 * the bit-packed metrics exist solely over b1x8, where upstream then had
+	 * no (metric, f32) kernel to call at all.
+	 *
+	 * For quantized kinds the measurement also goes through the index's own
+	 * metric object rather than the standalone builder: upstream's fresh
+	 * metric_punned_t routes the bit-packed kernels to NumKong with an
+	 * argument the kernel reads as a different unit, and 8-bit Hamming over
+	 * (0xFF, 0x00) reports 4.0 while the same metric answering search()
+	 * reports 8.0. The index's instance is the working authority. */
+	if ((zend_long)intern->scalar_kind == (zend_long)usearch_scalar_f32_k) {
+		d = usearch_distance(buf_a, buf_b, usearch_scalar_f32_k, dims,
+							 (usearch_metric_kind_t)intern->metric_kind, &error);
+	} else {
+		size_t bytes = usearch_php_bytes_per_vector((int)intern->scalar_kind, dims);
+		unsigned char *packed_a;
+		unsigned char *packed_b;
+		double dd = 0.0;
+
+		if (bytes == 0) {
+			usearch_throw("unsupported quantization for this index");
+			if (owned_a)
+				efree(buf_a);
+			if (owned_b)
+				efree(buf_b);
+			return;
+		}
+
+		packed_a = (unsigned char *)safe_emalloc(bytes, 1, 0);
+		packed_b = (unsigned char *)safe_emalloc(bytes, 1, 0);
+
+		if (usearch_php_quantize(buf_a, dims, (int)intern->scalar_kind, packed_a) != 0 ||
+			usearch_php_quantize(buf_b, dims, (int)intern->scalar_kind, packed_b) != 0) {
+			efree(packed_a);
+			efree(packed_b);
+			if (owned_a)
+				efree(buf_a);
+			if (owned_b)
+				efree(buf_b);
+			usearch_throw("unsupported quantization for this index");
+			return;
+		}
+
+		if (usearch_php_index_distance(handle, packed_a, packed_b, &dd) != 0) {
+			efree(packed_a);
+			efree(packed_b);
+			if (owned_a)
+				efree(buf_a);
+			if (owned_b)
+				efree(buf_b);
+			usearch_throw("index handle is not initialized; construction failed or the index was destroyed");
+			return;
+		}
+		d = (usearch_distance_t)dd;
+		efree(packed_a);
+		efree(packed_b);
+	}
 
 	if (owned_a)
 		efree(buf_a);
