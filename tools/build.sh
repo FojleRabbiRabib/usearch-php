@@ -24,12 +24,19 @@ cd "$ROOT"
 PHP_CONFIG="php-config${PHP_VER}"
 PHPIZE="phpize${PHP_VER}"
 
+# Prefer the version-suffixed toolchain, but fall back to the unversioned pair
+# *after confirming it reports the version we were asked for*. GitHub's
+# setup-php installs exactly one PHP per job and exposes it under the plain
+# names, so a matrix leg asking for 8.4 on a runner that only has `php-config`
+# must still be able to build; the version check is what keeps that fallback
+# honest rather than silently building the wrong ABI.
 if ! command -v "$PHP_CONFIG" >/dev/null 2>&1; then
-	if [ "$PHP_VER" = "8.3" ] && command -v php-config >/dev/null 2>&1; then
+	if command -v php-config >/dev/null 2>&1 \
+		&& [ "$(php-config --version 2>/dev/null | cut -d. -f1,2)" = "$PHP_VER" ]; then
 		PHP_CONFIG="php-config"
 		PHPIZE="phpize"
 	else
-		echo "FAIL: $PHP_CONFIG not found; install php$PHP_VER-dev" >&2
+		echo "FAIL: php-config${PHP_VER} not found, and the unversioned php-config does not report $PHP_VER" >&2
 		exit 1
 	fi
 fi

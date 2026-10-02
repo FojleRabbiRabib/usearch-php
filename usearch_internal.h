@@ -46,4 +46,17 @@ void usearch_vector_out(const float *data, size_t dimensions, zval *return_value
 zend_result usearch_metric_from_zval(zval *zv, zend_long *out);
 zend_result usearch_scalar_from_zval(zval *zv, zend_long *out);
 
+/* Haversine is the one metric upstream allows to be created without an explicit
+ * `dimensions`, because the width is implied by the coordinates. Every
+ * marshalling path needs the width the vectors actually have, not the reported
+ * 0, so resolve it here rather than at each call site. */
+static zend_always_inline size_t usearch_effective_dims(void *handle, zend_long metric_kind, usearch_error_t *error)
+{
+	size_t dims = usearch_dimensions((usearch_index_t)handle, error);
+	if (dims == 0 && metric_kind == (zend_long)usearch_metric_haversine_k) {
+		return 2;
+	}
+	return dims;
+}
+
 #endif /* USEARCH_INTERNAL_H */

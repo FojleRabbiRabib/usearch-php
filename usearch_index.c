@@ -16,6 +16,8 @@ static zend_object *usearch_index_create_object(zend_class_entry *ce)
 	intern->handle = NULL;
 	intern->read_only = false;
 	intern->metric_kind = usearch_metric_cos_k;
+	intern->threads_add = 0;
+	intern->threads_search = 0;
 	zend_object_std_init(&intern->std, ce);
 	object_properties_init(&intern->std, ce);
 	intern->std.handlers = &usearch_index_handlers;
@@ -32,6 +34,18 @@ static void usearch_index_free_object(zend_object *obj)
 	}
 	zend_object_std_dtor(&intern->std);
 }
+
+/* The engine's default clone copies the handle verbatim, so both objects call
+ * usearch_free on the same native index and the second one faults. Cloning is
+ * a caller error, not a supported operation: a shallow copy double-frees and a
+ * real deep copy would need upstream's serialise/reload path, which silently
+ * dequantises non-F32 vectors.
+ *
+ * The refusal is `clone_obj = NULL` in the handlers below, never a throwing
+ * clone_obj function: the engine checks the handler pointer before calling it
+ * and raises "Trying to clone an uncloneable object of class Usearch\Index"
+ * itself, but a handler that throws and returns NULL is not checked after the
+ * call — the engine dereferences the returned NULL one opcode later. */
 
 void *usearch_index_require_handle(usearch_index_object *intern)
 {
@@ -164,7 +178,7 @@ PHP_METHOD(Usearch_Index, add)
 	Z_PARAM_ZVAL(zv_vector)
 	ZEND_PARSE_PARAMETERS_END();
 
-	dims = usearch_dimensions((usearch_index_t)handle, &error);
+	dims = usearch_effective_dims(handle, intern->metric_kind, &error);
 	if (usearch_check_error(&error) == FAILURE) {
 		return;
 	}
@@ -235,13 +249,30 @@ PHP_METHOD(Usearch_Index, search)
 		return;
 	}
 
-	dims = usearch_dimensions((usearch_index_t)handle, &error);
+	dims = usearch_effective_dims(handle, intern->metric_kind, &error);
 	if (usearch_check_error(&error) == FAILURE) {
 		return;
 	}
 
 	if (usearch_vector_in(zv_query, dims, &data, &owned) == FAILURE) {
 		return;
+	}
+
+	/* Upstream can never return more than the index holds, and sizing the
+	 * output buffers from raw caller input lets PHP_INT_MAX overflow
+	 * safe_emalloc into an uncatchable fatal that kills the fpm worker.
+	 * Clamping is both the safety fix and the cheaper allocation. */
+	{
+		size_t have = usearch_size((usearch_index_t)handle, &error);
+		if (usearch_check_error(&error) == FAILURE) {
+			if (owned) {
+				efree(data);
+			}
+			return;
+		}
+		if ((size_t)count > have) {
+			count = (zend_long)have;
+		}
 	}
 
 	keys = (usearch_key_t *)safe_emalloc((size_t)count, sizeof(usearch_key_t), 0);
@@ -297,7 +328,7 @@ PHP_METHOD(Usearch_Index, get)
 		RETURN_NULL();
 	}
 
-	dims = usearch_dimensions((usearch_index_t)handle, &error);
+	dims = usearch_effective_dims(handle, intern->metric_kind, &error);
 	if (usearch_check_error(&error) == FAILURE) {
 		return;
 	}
@@ -673,6 +704,9 @@ PHP_METHOD(Usearch_Index, expansionSearch)
 	ZEND_PARSE_PARAMETERS_END();
 
 	if (!exp_is_null) {
+		if (usearch_reject_if_read_only(intern) == FAILURE) {
+			return;
+		}
 		if (exp < 0) {
 			zend_throw_error(zend_ce_value_error, "expansion must be non-negative");
 			return;
@@ -704,6 +738,12 @@ PHP_METHOD(Usearch_Index, threadsAdd)
 	ZEND_PARSE_PARAMETERS_END();
 
 	if (!th_is_null) {
+		/* Raising the thread budget makes upstream reallocate its node and
+		 * context buffers, which materialises a memory-mapped view into a
+		 * private heap copy. Guard it like every other mutation. */
+		if (usearch_reject_if_read_only(intern) == FAILURE) {
+			return;
+		}
 		if (th < 0) {
 			zend_throw_error(zend_ce_value_error, "threads must be non-negative");
 			return;
@@ -712,11 +752,12 @@ PHP_METHOD(Usearch_Index, threadsAdd)
 		if (usearch_check_error(&error) == FAILURE) {
 			return;
 		}
+		intern->threads_add = th;
 	}
 
-	/* Upstream exposes change_threads_add without a thread count getter;
-	 * return the set value or 0 when unchanged. */
-	RETURN_LONG(th_is_null ? 0 : th);
+	/* Upstream exposes change_threads_add without a getter, so the truthful
+	 * read-back comes from the retained value; 0 means automatic. */
+	RETURN_LONG(intern->threads_add);
 }
 
 PHP_METHOD(Usearch_Index, threadsSearch)
@@ -737,6 +778,11 @@ PHP_METHOD(Usearch_Index, threadsSearch)
 	ZEND_PARSE_PARAMETERS_END();
 
 	if (!th_is_null) {
+		/* Same rationale as threadsAdd: a raised search budget reallocates the
+		 * node buffers and silently detaches a memory-mapped view. */
+		if (usearch_reject_if_read_only(intern) == FAILURE) {
+			return;
+		}
 		if (th < 0) {
 			zend_throw_error(zend_ce_value_error, "threads must be non-negative");
 			return;
@@ -745,9 +791,10 @@ PHP_METHOD(Usearch_Index, threadsSearch)
 		if (usearch_check_error(&error) == FAILURE) {
 			return;
 		}
+		intern->threads_search = th;
 	}
 
-	RETURN_LONG(th_is_null ? 0 : th);
+	RETURN_LONG(intern->threads_search);
 }
 
 PHP_METHOD(Usearch_Index, changeMetric)
@@ -858,7 +905,7 @@ PHP_METHOD(Usearch_Index, distance)
 	Z_PARAM_ZVAL(zb)
 	ZEND_PARSE_PARAMETERS_END();
 
-	dims = usearch_dimensions((usearch_index_t)handle, &error);
+	dims = usearch_effective_dims(handle, intern->metric_kind, &error);
 	if (usearch_check_error(&error) == FAILURE) {
 		return;
 	}
@@ -939,14 +986,57 @@ PHP_METHOD(Usearch_Index, hardwareAccelerationAvailable)
  * Class registration
  * ------------------------------------------------------------------------- */
 
+/* The method table is hand-maintained integration glue, distinct from the
+ * generated signatures in usearch_arginfo.h: usearch.stub.php drives that
+ * file through tools/gen_stub.php, but gen_stub emits no method table for a
+ * class whose entries live here, so this list has to stay in step by hand.
+ * The arginfo-drift CI step diffs the generated signatures; a method added to
+ * the stub without one here fails at link time instead. */
+
+static const zend_function_entry class_Usearch_Index_methods[] = {
+	ZEND_ME(Usearch_Index, __construct, arginfo_class_Usearch_Index___construct, ZEND_ACC_PUBLIC)
+		ZEND_ME(Usearch_Index, add, arginfo_class_Usearch_Index_add, ZEND_ACC_PUBLIC)
+			ZEND_ME(Usearch_Index, search, arginfo_class_Usearch_Index_search, ZEND_ACC_PUBLIC)
+				ZEND_ME(Usearch_Index, get, arginfo_class_Usearch_Index_get, ZEND_ACC_PUBLIC)
+					ZEND_ME(Usearch_Index, contains, arginfo_class_Usearch_Index_contains, ZEND_ACC_PUBLIC)
+						ZEND_ME(Usearch_Index, count, arginfo_class_Usearch_Index_count, ZEND_ACC_PUBLIC)
+							ZEND_ME(Usearch_Index, remove, arginfo_class_Usearch_Index_remove, ZEND_ACC_PUBLIC)
+								ZEND_ME(Usearch_Index, rename, arginfo_class_Usearch_Index_rename, ZEND_ACC_PUBLIC)
+									ZEND_ME(Usearch_Index, clear, arginfo_class_Usearch_Index_clear, ZEND_ACC_PUBLIC)
+										ZEND_ME(Usearch_Index, reserve, arginfo_class_Usearch_Index_reserve, ZEND_ACC_PUBLIC)
+											ZEND_ME(Usearch_Index, save, arginfo_class_Usearch_Index_save, ZEND_ACC_PUBLIC)
+												ZEND_ME(Usearch_Index, load, arginfo_class_Usearch_Index_load, ZEND_ACC_PUBLIC)
+													ZEND_ME(Usearch_Index, view, arginfo_class_Usearch_Index_view, ZEND_ACC_PUBLIC)
+														ZEND_ME(Usearch_Index, size, arginfo_class_Usearch_Index_size, ZEND_ACC_PUBLIC)
+															ZEND_ME(Usearch_Index, capacity, arginfo_class_Usearch_Index_capacity, ZEND_ACC_PUBLIC)
+																ZEND_ME(Usearch_Index, dimensions, arginfo_class_Usearch_Index_dimensions, ZEND_ACC_PUBLIC)
+																	ZEND_ME(Usearch_Index, connectivity, arginfo_class_Usearch_Index_connectivity, ZEND_ACC_PUBLIC)
+																		ZEND_ME(Usearch_Index, expansionAdd, arginfo_class_Usearch_Index_expansionAdd, ZEND_ACC_PUBLIC)
+																			ZEND_ME(Usearch_Index, expansionSearch, arginfo_class_Usearch_Index_expansionSearch, ZEND_ACC_PUBLIC)
+																				ZEND_ME(Usearch_Index, threadsAdd, arginfo_class_Usearch_Index_threadsAdd, ZEND_ACC_PUBLIC)
+																					ZEND_ME(Usearch_Index, threadsSearch, arginfo_class_Usearch_Index_threadsSearch, ZEND_ACC_PUBLIC)
+																						ZEND_ME(Usearch_Index, changeMetric, arginfo_class_Usearch_Index_changeMetric, ZEND_ACC_PUBLIC)
+																							ZEND_ME(Usearch_Index, memoryUsage, arginfo_class_Usearch_Index_memoryUsage, ZEND_ACC_PUBLIC)
+																								ZEND_ME(Usearch_Index, serializedLength, arginfo_class_Usearch_Index_serializedLength, ZEND_ACC_PUBLIC)
+																									ZEND_ME(Usearch_Index, hardwareAcceleration, arginfo_class_Usearch_Index_hardwareAcceleration, ZEND_ACC_PUBLIC)
+																										ZEND_ME(Usearch_Index, distance, arginfo_class_Usearch_Index_distance, ZEND_ACC_PUBLIC)
+																											ZEND_ME(Usearch_Index, metadata, arginfo_class_Usearch_Index_metadata, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+																												ZEND_ME(Usearch_Index, version, arginfo_class_Usearch_Index_version, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+																													ZEND_ME(Usearch_Index, hardwareAccelerationCompiled, arginfo_class_Usearch_Index_hardwareAccelerationCompiled, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+																														ZEND_ME(Usearch_Index, hardwareAccelerationAvailable, arginfo_class_Usearch_Index_hardwareAccelerationAvailable, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
+																															PHP_FE_END};
+
 void usearch_register_index(void)
 {
 	zend_class_entry ce;
 	INIT_CLASS_ENTRY(ce, "Usearch\\Index", class_Usearch_Index_methods);
 	usearch_ce_index = zend_register_internal_class(&ce);
 	usearch_ce_index->create_object = usearch_index_create_object;
-
 	memcpy(&usearch_index_handlers, zend_get_std_object_handlers(), sizeof(zend_object_handlers));
 	usearch_index_handlers.offset = XtOffsetOf(usearch_index_object, std);
 	usearch_index_handlers.free_obj = usearch_index_free_object;
+
+	/* NULL makes the engine itself refuse `clone $index`; see the note above
+	 * usearch_index_require_handle for why a throwing handler is wrong here. */
+	usearch_index_handlers.clone_obj = NULL;
 }

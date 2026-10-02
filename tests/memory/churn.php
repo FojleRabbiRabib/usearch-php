@@ -76,6 +76,61 @@ for ($i = 0; $i < ITERATIONS; $i++) {
     } catch (\ValueError $e) {
     }
 
+    try {
+        $idx->search($query, 0); /* non-positive count */
+    } catch (\ValueError $e) {
+    }
+
+    /* Oversized k clamps to size; the allocation path must stay clean. */
+    $idx->search($query, PHP_INT_MAX);
+
+    /* Non-finite components round-trip through the marshalling buffers. */
+    $nan = new Index(['dimensions' => 3]);
+    $nan->add(1, [NAN, INF, -INF]);
+    $nan->get(1);
+    $nan->distance([NAN, 0.0, 0.0], [1.0, 1.0, 1.0]);
+    unset($nan);
+
+    /* Multi-key groups: add, count, rename, remove. */
+    $multi = new Index(['dimensions' => 3, 'multi' => true]);
+    $multi->add(5, [1.0, 0.0, 0.0]);
+    $multi->add(5, [0.0, 1.0, 0.0]);
+    $multi->count(5);
+    $multi->rename(5, 6);
+    $multi->remove(6);
+    unset($multi);
+
+    /* Corrupt-file paths: every rejection must free its buffers. */
+    foreach (['junk', 'empty', 'truncated'] as $kind) {
+        $bad = tempnam(sys_get_temp_dir(), 'usearch-bad-');
+        if ($kind === 'junk') {
+            file_put_contents($bad, "not an index\n");
+        } elseif ($kind === 'truncated') {
+            copy($tmp, $bad);
+            $fh = fopen($bad, 'r+');
+            if ($fh === false) {
+                fwrite(STDERR, "FAIL: cannot open {$bad}\n");
+                exit(1);
+            }
+            ftruncate($fh, 64);
+            fclose($fh);
+        }
+        foreach (['load', 'view'] as $method) {
+            $victim = new Index(['dimensions' => 8]);
+            try {
+                $victim->$method($bad);
+            } catch (\Usearch\Exception $e) {
+            }
+            unset($victim);
+        }
+        unlink($bad);
+    }
+
+    /* An empty index: search returns no rows without allocating a result set. */
+    $blank = new Index(['dimensions' => 8]);
+    $blank->search($query, 10);
+    unset($blank);
+
     unset($idx);
 }
 

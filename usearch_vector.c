@@ -44,6 +44,15 @@ zend_result usearch_vector_in(zval *zv, size_t dimensions, float **out, bool *ow
 		float *buf;
 		size_t i = 0;
 
+		/* Dimensions are positional. A keyed array would be mapped in insertion
+		 * order, so the same numbers under different keys would silently become
+		 * different vectors; reject it instead. */
+		if (!zend_array_is_list(ht)) {
+			zend_throw_error(zend_ce_value_error,
+							 "vector must be a list of floats with consecutive 0-based keys");
+			return FAILURE;
+		}
+
 		if (count != (uint32_t)dimensions) {
 			zend_throw_error(zend_ce_value_error,
 							 "vector dimension mismatch: expected %zu, got %u", dimensions, count);

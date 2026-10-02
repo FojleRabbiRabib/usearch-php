@@ -33,11 +33,15 @@ extern zend_class_entry *usearch_ce_scalar;
  * read_only is set on indexes opened via view() to prevent SIGSEGV on mmap.
  * metric_kind is retained because upstream exposes no getter for it, and
  * distance() needs it to build its metric; an unknown kind would call through
- * a null function pointer. */
+ * a null function pointer. The thread budgets are retained for the same
+ * reason: upstream has change_threads_* setters but no getters, so a truthful
+ * read-back has to be remembered here. 0 means "automatic". */
 typedef struct _usearch_index_object {
 	void *handle;
 	bool read_only;
 	zend_long metric_kind;
+	zend_long threads_add;
+	zend_long threads_search;
 	zend_object std;
 } usearch_index_object;
 

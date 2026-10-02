@@ -89,10 +89,12 @@ function main(string $phpBinary): int
             array_map('escapeshellarg', [$script])
         );
         $cmdLine = implode(' ', $cmd);
-        $captured = shell_exec($cmdLine . ' 2>&1');
-        $output = $captured === false || $captured === null ? '' : $captured;
+        /* One process, both results. Running it twice would double every side
+         * effect in the case and could pair run 1's output with run 2's exit. */
+        $outputLines = [];
         $exitCode = 0;
-        exec($cmdLine . ' > /dev/null 2>&1', $_, $exitCode);
+        exec($cmdLine . ' 2>&1', $outputLines, $exitCode);
+        $output = implode("\n", $outputLines);
 
         $expected = rtrim($sections['EXPECTF'], "\n");
         $expectedRe = '/^' . strtr(
