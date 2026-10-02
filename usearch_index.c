@@ -535,6 +535,12 @@ PHP_METHOD(Usearch_Index, load)
 	if (usearch_check_error(&error) == SUCCESS) {
 		usearch_init_options_t stored;
 		intern->read_only = false;
+		/* The loaded handle's budgets come from the file, not from anything
+		 * this object set, and upstream exposes no getter to re-read them.
+		 * Reset the retained readback to 0 ("unset by this object") so it
+		 * cannot keep reporting a value the new handle does not have. */
+		intern->threads_add = 0;
+		intern->threads_search = 0;
 		/* A loaded index carries its own metric, which need not match the one
 		 * this object was constructed with. Re-read it so distance() keeps
 		 * agreeing with search() after a reload. */
@@ -567,6 +573,11 @@ PHP_METHOD(Usearch_Index, view)
 	if (usearch_check_error(&error) == SUCCESS) {
 		usearch_init_options_t stored;
 		intern->read_only = true;
+		/* Same readback reset as load(): the view's budgets came from the
+		 * file, and upstream sets at least 1 when it opens a view, so a
+		 * retained 4 or a fresh 0 would both misdescribe it. */
+		intern->threads_add = 0;
+		intern->threads_search = 0;
 		/* Same rationale as load(): the viewed file's metric is authoritative. */
 		memset(&stored, 0, sizeof(stored));
 		usearch_metadata(path, &stored, &error);
@@ -991,40 +1002,50 @@ PHP_METHOD(Usearch_Index, hardwareAccelerationAvailable)
  * file through tools/gen_stub.php, but gen_stub emits no method table for a
  * class whose entries live here, so this list has to stay in step by hand.
  * The arginfo-drift CI step diffs the generated signatures; a method added to
- * the stub without one here fails at link time instead. */
+ * the stub without one here fails at link time instead.
+ *
+ * The table sits inside a clang-format off/on pair on purpose. To the
+ * formatter the braced initializer is one call, and with `ColumnLimit: 0`
+ * every line after the first accumulates a continuation tab: regenerating
+ * this table through clang-format produced a 31-level staircase that stayed
+ * green under the format gate. Kept flat by hand here; the gate still checks
+ * the rest of the file. */
 
+/* clang-format off */
 static const zend_function_entry class_Usearch_Index_methods[] = {
 	ZEND_ME(Usearch_Index, __construct, arginfo_class_Usearch_Index___construct, ZEND_ACC_PUBLIC)
-		ZEND_ME(Usearch_Index, add, arginfo_class_Usearch_Index_add, ZEND_ACC_PUBLIC)
-			ZEND_ME(Usearch_Index, search, arginfo_class_Usearch_Index_search, ZEND_ACC_PUBLIC)
-				ZEND_ME(Usearch_Index, get, arginfo_class_Usearch_Index_get, ZEND_ACC_PUBLIC)
-					ZEND_ME(Usearch_Index, contains, arginfo_class_Usearch_Index_contains, ZEND_ACC_PUBLIC)
-						ZEND_ME(Usearch_Index, count, arginfo_class_Usearch_Index_count, ZEND_ACC_PUBLIC)
-							ZEND_ME(Usearch_Index, remove, arginfo_class_Usearch_Index_remove, ZEND_ACC_PUBLIC)
-								ZEND_ME(Usearch_Index, rename, arginfo_class_Usearch_Index_rename, ZEND_ACC_PUBLIC)
-									ZEND_ME(Usearch_Index, clear, arginfo_class_Usearch_Index_clear, ZEND_ACC_PUBLIC)
-										ZEND_ME(Usearch_Index, reserve, arginfo_class_Usearch_Index_reserve, ZEND_ACC_PUBLIC)
-											ZEND_ME(Usearch_Index, save, arginfo_class_Usearch_Index_save, ZEND_ACC_PUBLIC)
-												ZEND_ME(Usearch_Index, load, arginfo_class_Usearch_Index_load, ZEND_ACC_PUBLIC)
-													ZEND_ME(Usearch_Index, view, arginfo_class_Usearch_Index_view, ZEND_ACC_PUBLIC)
-														ZEND_ME(Usearch_Index, size, arginfo_class_Usearch_Index_size, ZEND_ACC_PUBLIC)
-															ZEND_ME(Usearch_Index, capacity, arginfo_class_Usearch_Index_capacity, ZEND_ACC_PUBLIC)
-																ZEND_ME(Usearch_Index, dimensions, arginfo_class_Usearch_Index_dimensions, ZEND_ACC_PUBLIC)
-																	ZEND_ME(Usearch_Index, connectivity, arginfo_class_Usearch_Index_connectivity, ZEND_ACC_PUBLIC)
-																		ZEND_ME(Usearch_Index, expansionAdd, arginfo_class_Usearch_Index_expansionAdd, ZEND_ACC_PUBLIC)
-																			ZEND_ME(Usearch_Index, expansionSearch, arginfo_class_Usearch_Index_expansionSearch, ZEND_ACC_PUBLIC)
-																				ZEND_ME(Usearch_Index, threadsAdd, arginfo_class_Usearch_Index_threadsAdd, ZEND_ACC_PUBLIC)
-																					ZEND_ME(Usearch_Index, threadsSearch, arginfo_class_Usearch_Index_threadsSearch, ZEND_ACC_PUBLIC)
-																						ZEND_ME(Usearch_Index, changeMetric, arginfo_class_Usearch_Index_changeMetric, ZEND_ACC_PUBLIC)
-																							ZEND_ME(Usearch_Index, memoryUsage, arginfo_class_Usearch_Index_memoryUsage, ZEND_ACC_PUBLIC)
-																								ZEND_ME(Usearch_Index, serializedLength, arginfo_class_Usearch_Index_serializedLength, ZEND_ACC_PUBLIC)
-																									ZEND_ME(Usearch_Index, hardwareAcceleration, arginfo_class_Usearch_Index_hardwareAcceleration, ZEND_ACC_PUBLIC)
-																										ZEND_ME(Usearch_Index, distance, arginfo_class_Usearch_Index_distance, ZEND_ACC_PUBLIC)
-																											ZEND_ME(Usearch_Index, metadata, arginfo_class_Usearch_Index_metadata, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
-																												ZEND_ME(Usearch_Index, version, arginfo_class_Usearch_Index_version, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
-																													ZEND_ME(Usearch_Index, hardwareAccelerationCompiled, arginfo_class_Usearch_Index_hardwareAccelerationCompiled, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
-																														ZEND_ME(Usearch_Index, hardwareAccelerationAvailable, arginfo_class_Usearch_Index_hardwareAccelerationAvailable, ZEND_ACC_PUBLIC | ZEND_ACC_STATIC)
-																															PHP_FE_END};
+	ZEND_ME(Usearch_Index, add, arginfo_class_Usearch_Index_add, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, search, arginfo_class_Usearch_Index_search, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, get, arginfo_class_Usearch_Index_get, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, contains, arginfo_class_Usearch_Index_contains, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, count, arginfo_class_Usearch_Index_count, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, remove, arginfo_class_Usearch_Index_remove, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, rename, arginfo_class_Usearch_Index_rename, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, clear, arginfo_class_Usearch_Index_clear, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, reserve, arginfo_class_Usearch_Index_reserve, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, save, arginfo_class_Usearch_Index_save, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, load, arginfo_class_Usearch_Index_load, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, view, arginfo_class_Usearch_Index_view, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, size, arginfo_class_Usearch_Index_size, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, capacity, arginfo_class_Usearch_Index_capacity, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, dimensions, arginfo_class_Usearch_Index_dimensions, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, connectivity, arginfo_class_Usearch_Index_connectivity, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, expansionAdd, arginfo_class_Usearch_Index_expansionAdd, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, expansionSearch, arginfo_class_Usearch_Index_expansionSearch, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, threadsAdd, arginfo_class_Usearch_Index_threadsAdd, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, threadsSearch, arginfo_class_Usearch_Index_threadsSearch, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, changeMetric, arginfo_class_Usearch_Index_changeMetric, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, memoryUsage, arginfo_class_Usearch_Index_memoryUsage, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, serializedLength, arginfo_class_Usearch_Index_serializedLength, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, hardwareAcceleration, arginfo_class_Usearch_Index_hardwareAcceleration, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, distance, arginfo_class_Usearch_Index_distance, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, metadata, arginfo_class_Usearch_Index_metadata, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(Usearch_Index, version, arginfo_class_Usearch_Index_version, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(Usearch_Index, hardwareAccelerationCompiled, arginfo_class_Usearch_Index_hardwareAccelerationCompiled, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(Usearch_Index, hardwareAccelerationAvailable, arginfo_class_Usearch_Index_hardwareAccelerationAvailable, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	PHP_FE_END
+};
+/* clang-format on */
 
 void usearch_register_index(void)
 {

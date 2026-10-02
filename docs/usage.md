@@ -147,7 +147,11 @@ view.
 ### Runtime tuning
 `expansionAdd(?int $expansion = null)`, `expansionSearch(?int $expansion = null)`,
 `threadsAdd(?int $threads = null)`, `threadsSearch(?int $threads = null)` — each **reads** the
-current value when called with no argument and **updates** it when given one.
+current value when called with no argument and **updates** it when given one. The readback
+describes what *this object* set: `load()` and `view()` replace the underlying index with one
+whose budgets came from the file (and upstream exposes no getter for them), so both reset the
+`threads*` readback to `0` ("unset by this object"). A value read back after `load()` reflects
+only a `threads*` call made after the load.
 
 ```php
 $index->expansionSearch(256);  // raise recall
