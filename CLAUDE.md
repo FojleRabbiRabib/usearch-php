@@ -36,6 +36,7 @@ is reproducible from the pins in `tools/fetch-usearch.sh`.
 | `tests/phpt/` | Behavioural suite |
 | `tests/memory/churn.php` | Valgrind leak-gate driver |
 | `tests/quality/recall.php` | recall@10 gate over Fashion-MNIST |
+| `tests/quality/metrics.php` | metric values checked against independent PHP arithmetic |
 | `docs/` | Shipped product manuals |
 
 Files in the repository root that are planning records stay **untracked and never committed**.
@@ -58,6 +59,7 @@ Files in the repository root that are planning records stay **untracked and neve
 
 ```bash
 php tools/test-phpt.php
+php -n -d extension=modules/usearch.so tests/quality/metrics.php
 valgrind --leak-check=full --error-exitcode=1 php -n -d extension=modules/usearch.so tests/memory/churn.php
 ./tools/fetch-dataset.sh && php -n -d extension=modules/usearch.so tests/quality/recall.php
 clang-format-14 --dry-run --Werror usearch.c usearch_index.c usearch_vector.c usearch_enums.c usearch_exception.c usearch_bridge.cpp php_usearch.h usearch_internal.h usearch_bridge.h

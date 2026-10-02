@@ -44,6 +44,9 @@ jobs:
       - name: Run phpt test suite
         run: php tools/test-phpt.php
 
+      - name: Metric-correctness gate
+        run: php -n -d extension=modules/usearch.so tests/quality/metrics.php
+
       - name: Run Valgrind memory churn test
         run: |
           valgrind --leak-check=full --error-exitcode=1 \

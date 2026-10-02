@@ -80,6 +80,7 @@ Initial release of usearch-php:
    <file role="doc" name="examples/basic.php"/>
    <file role="test" name="tests/memory/churn.php"/>
    <file role="test" name="tests/quality/recall.php"/>
+   <file role="test" name="tests/quality/metrics.php"/>
    <file role="test" name="tests/phpt/001-basic.phpt"/>
    <file role="test" name="tests/phpt/002-add-search.phpt"/>
    <file role="test" name="tests/phpt/003-persistence.phpt"/>
@@ -91,6 +92,7 @@ Initial release of usearch-php:
    <file role="test" name="tests/phpt/009-multi-keys.phpt"/>
    <file role="test" name="tests/phpt/010-corrupt-file.phpt"/>
    <file role="test" name="tests/phpt/011-clone-refused.phpt"/>
+   <file role="test" name="tests/phpt/012-thread-readback.phpt"/>
   </dir>
  </contents>
  <dependencies>
