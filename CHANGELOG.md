@@ -2,7 +2,9 @@
 
 All notable changes to `usearch-php` are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
-Releases encode the vendored USearch version: `v0.1.0+usearch.2.26.2`.
+Git tags carry the plain extension version (`v0.1.0`); each release pairs it with
+a vendored USearch pin, recorded in the tag message, `php_usearch.h`, and the
+release notes. 0.1.0 vendored USearch 2.26.2.
 
 ## 0.1.0 - 2026-10-03
 
