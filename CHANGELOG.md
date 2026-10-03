@@ -12,6 +12,10 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 - The `phpinfo()`/`php --ri usearch` section now reports the upstream USearch pin, thread safety
   (ZTS/NTS), the shipped feature set, and author credit alongside the version and SIMD dispatch.
 
+### Fixed
+- Documentation: the prebuilt-install example pointed at a wrong asset name, and the stated glibc
+  floor now matches the released binaries (2.34, per each release's provenance records).
+
 ## 0.1.0 - 2026-10-03
 
 ### Added

@@ -70,7 +70,7 @@ php -r 'echo Usearch\Index::version() . PHP_EOL;'
 GitHub Releases publishes standalone per-ABI `.so` binaries alongside the PIE archives:
 
 ```bash
-curl -fsSL -o /tmp/usearch.so https://github.com/FojleRabbiRabib/usearch-php/releases/download/v0.1.0/usearch-php8.3-x86_64-linux-glibc.so
+curl -fsSL -o /tmp/usearch.so https://github.com/FojleRabbiRabib/usearch-php/releases/download/v0.1.0/usearch-php8.3-linux-x86_64.so
 sudo install -m 0755 /tmp/usearch.so $(php-config --extension-dir)/usearch.so
 echo "extension=usearch.so" | sudo tee /etc/php/8.3/mods-available/usearch.ini
 ```
@@ -79,5 +79,6 @@ echo "extension=usearch.so" | sudo tee /etc/php/8.3/mods-available/usearch.ini
 
 ## 4. Minimum glibc floor
 
-Prebuilt Linux binaries target **glibc 2.17** (compatible with CentOS 7, RHEL 8+, Debian 10+,
-Ubuntu 18.04+). Older systems should build from source.
+Prebuilt Linux binaries require **glibc 2.34 or newer** (Ubuntu 22.04+, Debian 12+, RHEL 9+; the
+provenance record shipped with every release names the exact symbol floor). Older systems should
+build from source.

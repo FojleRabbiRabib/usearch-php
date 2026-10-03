@@ -127,8 +127,8 @@ Approximate by construction — the returned set is the HNSW graph's best answer
 exact top-k. Raise `expansionSearch` for higher recall at higher cost.
 
 ### `get(int $key): ?array`
-Returns the stored vector, or `null` when the key is absent or the index is lossy-quantized (values
-are dequantized).
+Returns the stored vector, or `null` when the key is absent. Quantized indexes return dequantized
+values, not the originals.
 
 ### `contains(int $key): bool`
 True when at least one vector is stored under `$key`.
@@ -162,8 +162,8 @@ $restored->load('/var/lib/search/docs.usearch');
 Memory-maps an index file **read-only**. The process shares the OS page cache instead of holding a
 private heap copy — 50 php-fpm workers viewing one 2 GB index consume one 2 GB of cache, not 100 GB
 of RAM. All mutating methods (`add`, `remove`, `rename`, `clear`, `reserve`, `changeMetric`, and the
-setter forms of `expansionAdd`/`expansionSearch`) raise `Usearch\Exception` while the instance is a
-view.
+setter forms of `expansionAdd`/`expansionSearch`/`threadsAdd`/`threadsSearch`) raise
+`Usearch\Exception` while the instance is a view.
 
 ### Introspection
 `size()`, `capacity()`, `dimensions()`, `connectivity()`, `memoryUsage()`, `serializedLength()`,
@@ -221,5 +221,5 @@ The SIMD instruction set this build targets, and the best one this host can exec
 - **The extension does not disable SIMD dispatch.** `hardwareAcceleration()` reports the ISA the
   index actually resolved to; on modern x86-64 that should be an AVX-512 or AVX2 variant, not a
   scalar fallback.
-- **Measure real memory with `memory_usage()` and OS RSS**, not `memory_get_usage()`: Zend's tracker
+- **Measure real memory with `memoryUsage()` and OS RSS**, not `memory_get_usage()`: Zend's tracker
   is blind to the C++ allocator and the index graph.
