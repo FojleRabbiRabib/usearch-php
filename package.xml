@@ -62,6 +62,7 @@ Initial release of usearch-php:
    <file role="src" name="tools/gate-symbols.sh"/>
    <file role="src" name="tools/gen_stub.php"/>
    <file role="src" name="tools/test-phpt.php"/>
+   <file role="src" name="tools/release-build.sh"/>
    <file role="data" name=".clang-format"/>
    <file role="data" name=".editorconfig"/>
    <file role="data" name=".gitattributes"/>
@@ -69,6 +70,11 @@ Initial release of usearch-php:
    <file role="data" name="phpcs.xml"/>
    <file role="data" name="phpstan.neon"/>
    <file role="data" name=".github/workflows/ci.yml"/>
+   <file role="data" name=".github/workflows/release.yml"/>
+   <file role="data" name=".github/FUNDING.yml"/>
+   <file role="data" name=".github/SECURITY.md"/>
+   <file role="data" name=".github/ISSUE_TEMPLATE/bug_report.yml"/>
+   <file role="data" name=".github/ISSUE_TEMPLATE/feature_request.yml"/>
    <file role="doc" name="README.md"/>
    <file role="doc" name="CHANGELOG.md"/>
    <file role="doc" name="CLAUDE.md"/>
@@ -77,6 +83,7 @@ Initial release of usearch-php:
    <file role="doc" name="docs/installation.md"/>
    <file role="doc" name="docs/usage.md"/>
    <file role="doc" name="docs/security.md"/>
+   <file role="doc" name="docs/benchmarks.md"/>
    <file role="doc" name="examples/basic.php"/>
    <file role="test" name="tests/memory/churn.php"/>
    <file role="test" name="tests/quality/recall.php"/>
