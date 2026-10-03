@@ -40,7 +40,10 @@ extern zend_class_entry *usearch_ce_scalar;
  * upstream kernel at all, so the old hardcode was undefined behaviour, not a
  * wrong answer. The thread budgets are retained for the same reason: upstream
  * has change_threads_* setters but no getters, so a truthful read-back has to
- * be remembered here. 0 means "automatic". */
+ * be remembered here. 0 means "automatic". view_buffer is set only by
+ * viewBuffer(): upstream's usearch_view_buffer keeps referencing the caller's
+ * bytes for the lifetime of the view, so the object retains its own copy of
+ * the payload and releases it at teardown. */
 typedef struct _usearch_index_object {
 	void *handle;
 	bool read_only;
@@ -48,6 +51,7 @@ typedef struct _usearch_index_object {
 	zend_long scalar_kind;
 	zend_long threads_add;
 	zend_long threads_search;
+	zend_string *view_buffer;
 	zend_object std;
 } usearch_index_object;
 

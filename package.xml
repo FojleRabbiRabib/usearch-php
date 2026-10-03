@@ -101,6 +101,7 @@ Initial release of usearch-php:
    <file role="test" name="tests/phpt/011-clone-refused.phpt"/>
    <file role="test" name="tests/phpt/012-thread-readback.phpt"/>
    <file role="test" name="tests/phpt/013-unknown-option.phpt"/>
+   <file role="test" name="tests/phpt/014-buffer-variants.phpt"/>
   </dir>
  </contents>
  <dependencies>

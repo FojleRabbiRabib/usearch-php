@@ -131,6 +131,33 @@ for ($i = 0; $i < ITERATIONS; $i++) {
     $blank->search($query, 10);
     unset($blank);
 
+    /* Buffer variants: serialize, inspect, reload, view, and corrupt rejects.
+     * The buffer view retains its payload on the object, so the churn must
+     * show no leak when the viewed object dies before or after its source. */
+    $bytes = $idx->saveBuffer();
+    Index::metadataBuffer($bytes);
+    $fromBuf = new Index(['dimensions' => 3]);
+    $fromBuf->loadBuffer($bytes);
+    $fromBuf->search($query, 2);
+    unset($fromBuf);
+    $bufView = new Index(['dimensions' => 3]);
+    $bufView->viewBuffer($bytes);
+    $bufView->search($query, 2);
+    unset($bufView);
+    foreach (['junk' => "not an index\n", 'short' => substr($bytes, 0, 16)] as $bad) {
+        $victim = new Index(['dimensions' => 3]);
+        try {
+            $victim->loadBuffer($bad);
+        } catch (\Usearch\Exception $e) {
+        }
+        try {
+            $victim->viewBuffer($bad);
+        } catch (\Usearch\Exception $e) {
+        }
+        unset($victim);
+    }
+    unset($bytes);
+
     unset($idx);
 }
 

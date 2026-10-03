@@ -19,6 +19,7 @@ static zend_object *usearch_index_create_object(zend_class_entry *ce)
 	intern->scalar_kind = usearch_scalar_f32_k;
 	intern->threads_add = 0;
 	intern->threads_search = 0;
+	intern->view_buffer = NULL;
 	zend_object_std_init(&intern->std, ce);
 	object_properties_init(&intern->std, ce);
 	intern->std.handlers = &usearch_index_handlers;
@@ -32,6 +33,12 @@ static void usearch_index_free_object(zend_object *obj)
 		usearch_error_t error = NULL;
 		usearch_free((usearch_index_t)intern->handle, &error);
 		intern->handle = NULL;
+	}
+	/* Released after the handle: upstream's buffer view dereferences the
+	 * payload until usearch_free, so the bytes must outlive it. */
+	if (intern->view_buffer != NULL) {
+		zend_string_release(intern->view_buffer);
+		intern->view_buffer = NULL;
 	}
 	zend_object_std_dtor(&intern->std);
 }
@@ -516,6 +523,32 @@ PHP_METHOD(Usearch_Index, save)
 	usearch_check_error(&error);
 }
 
+PHP_METHOD(Usearch_Index, saveBuffer)
+{
+	usearch_index_object *intern = Z_USEARCH_INDEX_P(ZEND_THIS);
+	void *handle = usearch_index_require_handle(intern);
+	usearch_error_t error = NULL;
+	size_t length;
+	zend_string *out;
+
+	if (handle == NULL) {
+		return;
+	}
+	ZEND_PARSE_PARAMETERS_NONE();
+
+	length = usearch_serialized_length((usearch_index_t)handle, &error);
+	if (usearch_check_error(&error) == FAILURE) {
+		return;
+	}
+	out = zend_string_alloc(length, 0);
+	usearch_save_buffer((usearch_index_t)handle, ZSTR_VAL(out), ZSTR_LEN(out), &error);
+	if (usearch_check_error(&error) == FAILURE) {
+		zend_string_efree(out);
+		return;
+	}
+	RETURN_STR(out);
+}
+
 PHP_METHOD(Usearch_Index, load)
 {
 	(void)return_value; /* void method */
@@ -555,6 +588,41 @@ PHP_METHOD(Usearch_Index, load)
 	}
 }
 
+PHP_METHOD(Usearch_Index, loadBuffer)
+{
+	(void)return_value; /* void method */
+	usearch_index_object *intern = Z_USEARCH_INDEX_P(ZEND_THIS);
+	void *handle = usearch_index_require_handle(intern);
+	char *buffer;
+	size_t buffer_len;
+	usearch_error_t error = NULL;
+
+	if (handle == NULL) {
+		return;
+	}
+
+	ZEND_PARSE_PARAMETERS_START(1, 1)
+	Z_PARAM_STRING(buffer, buffer_len)
+	ZEND_PARSE_PARAMETERS_END();
+
+	usearch_load_buffer((usearch_index_t)handle, buffer, buffer_len, &error);
+	if (usearch_check_error(&error) == SUCCESS) {
+		usearch_init_options_t stored;
+		/* Same post-load bookkeeping as load(): the buffer's budgets came
+		 * from whoever serialized it, and its metric and quantization are
+		 * authoritative for distance()/search() agreement. */
+		intern->read_only = false;
+		intern->threads_add = 0;
+		intern->threads_search = 0;
+		memset(&stored, 0, sizeof(stored));
+		usearch_metadata_buffer(buffer, buffer_len, &stored, &error);
+		if (usearch_check_error(&error) == SUCCESS) {
+			intern->metric_kind = (zend_long)stored.metric_kind;
+			intern->scalar_kind = (zend_long)stored.quantization;
+		}
+	}
+}
+
 PHP_METHOD(Usearch_Index, view)
 {
 	(void)return_value; /* void method */
@@ -584,6 +652,53 @@ PHP_METHOD(Usearch_Index, view)
 		/* Same rationale as load(): the viewed file's metric is authoritative. */
 		memset(&stored, 0, sizeof(stored));
 		usearch_metadata(path, &stored, &error);
+		if (usearch_check_error(&error) == SUCCESS) {
+			intern->metric_kind = (zend_long)stored.metric_kind;
+			intern->scalar_kind = (zend_long)stored.quantization;
+		}
+	}
+}
+
+PHP_METHOD(Usearch_Index, viewBuffer)
+{
+	(void)return_value; /* void method */
+	usearch_index_object *intern = Z_USEARCH_INDEX_P(ZEND_THIS);
+	void *handle = usearch_index_require_handle(intern);
+	char *buffer;
+	size_t buffer_len;
+	zend_string *owned;
+	usearch_error_t error = NULL;
+
+	if (handle == NULL) {
+		return;
+	}
+
+	ZEND_PARSE_PARAMETERS_START(1, 1)
+	Z_PARAM_STRING(buffer, buffer_len)
+	ZEND_PARSE_PARAMETERS_END();
+
+	/* usearch_view_buffer keeps referencing the bytes for the view's whole
+	 * lifetime, and the caller's zval can go away or change under copy-on-write
+	 * at any moment after this call. Retain a private copy on the object and
+	 * release it in free_obj, after the handle. */
+	owned = zend_string_init(buffer, buffer_len, 0);
+	usearch_view_buffer((usearch_index_t)handle, ZSTR_VAL(owned), ZSTR_LEN(owned), &error);
+	if (usearch_check_error(&error) == FAILURE) {
+		zend_string_efree(owned);
+		return;
+	}
+	if (intern->view_buffer != NULL) {
+		zend_string_release(intern->view_buffer);
+	}
+	intern->view_buffer = owned;
+
+	intern->read_only = true;
+	intern->threads_add = 0;
+	intern->threads_search = 0;
+	{
+		usearch_init_options_t stored;
+		memset(&stored, 0, sizeof(stored));
+		usearch_metadata_buffer(ZSTR_VAL(owned), ZSTR_LEN(owned), &stored, &error);
 		if (usearch_check_error(&error) == SUCCESS) {
 			intern->metric_kind = (zend_long)stored.metric_kind;
 			intern->scalar_kind = (zend_long)stored.quantization;
@@ -1008,6 +1123,19 @@ PHP_METHOD(Usearch_Index, distance)
 	RETURN_DOUBLE((double)d);
 }
 
+/* The option set both metadata() and metadataBuffer() report. */
+static void usearch_options_to_array(usearch_init_options_t *opts, zval *return_value)
+{
+	array_init_size(return_value, 7);
+	add_assoc_long_ex(return_value, "metric", sizeof("metric") - 1, (zend_long)opts->metric_kind);
+	add_assoc_long_ex(return_value, "quantization", sizeof("quantization") - 1, (zend_long)opts->quantization);
+	add_assoc_long_ex(return_value, "dimensions", sizeof("dimensions") - 1, (zend_long)opts->dimensions);
+	add_assoc_long_ex(return_value, "connectivity", sizeof("connectivity") - 1, (zend_long)opts->connectivity);
+	add_assoc_long_ex(return_value, "expansionAdd", sizeof("expansionAdd") - 1, (zend_long)opts->expansion_add);
+	add_assoc_long_ex(return_value, "expansionSearch", sizeof("expansionSearch") - 1, (zend_long)opts->expansion_search);
+	add_assoc_bool_ex(return_value, "multi", sizeof("multi") - 1, opts->multi);
+}
+
 PHP_METHOD(Usearch_Index, metadata)
 {
 	char *path;
@@ -1025,14 +1153,27 @@ PHP_METHOD(Usearch_Index, metadata)
 		return;
 	}
 
-	array_init_size(return_value, 7);
-	add_assoc_long_ex(return_value, "metric", sizeof("metric") - 1, (zend_long)opts.metric_kind);
-	add_assoc_long_ex(return_value, "quantization", sizeof("quantization") - 1, (zend_long)opts.quantization);
-	add_assoc_long_ex(return_value, "dimensions", sizeof("dimensions") - 1, (zend_long)opts.dimensions);
-	add_assoc_long_ex(return_value, "connectivity", sizeof("connectivity") - 1, (zend_long)opts.connectivity);
-	add_assoc_long_ex(return_value, "expansionAdd", sizeof("expansionAdd") - 1, (zend_long)opts.expansion_add);
-	add_assoc_long_ex(return_value, "expansionSearch", sizeof("expansionSearch") - 1, (zend_long)opts.expansion_search);
-	add_assoc_bool_ex(return_value, "multi", sizeof("multi") - 1, opts.multi);
+	usearch_options_to_array(&opts, return_value);
+}
+
+PHP_METHOD(Usearch_Index, metadataBuffer)
+{
+	char *buffer;
+	size_t buffer_len;
+	usearch_init_options_t opts;
+	usearch_error_t error = NULL;
+
+	ZEND_PARSE_PARAMETERS_START(1, 1)
+	Z_PARAM_STRING(buffer, buffer_len)
+	ZEND_PARSE_PARAMETERS_END();
+
+	memset(&opts, 0, sizeof(opts));
+	usearch_metadata_buffer(buffer, buffer_len, &opts, &error);
+	if (usearch_check_error(&error) == FAILURE) {
+		return;
+	}
+
+	usearch_options_to_array(&opts, return_value);
 }
 
 PHP_METHOD(Usearch_Index, version)
@@ -1088,8 +1229,11 @@ static const zend_function_entry class_Usearch_Index_methods[] = {
 	ZEND_ME(Usearch_Index, clear, arginfo_class_Usearch_Index_clear, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, reserve, arginfo_class_Usearch_Index_reserve, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, save, arginfo_class_Usearch_Index_save, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, saveBuffer, arginfo_class_Usearch_Index_saveBuffer, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, load, arginfo_class_Usearch_Index_load, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, loadBuffer, arginfo_class_Usearch_Index_loadBuffer, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, view, arginfo_class_Usearch_Index_view, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, viewBuffer, arginfo_class_Usearch_Index_viewBuffer, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, size, arginfo_class_Usearch_Index_size, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, capacity, arginfo_class_Usearch_Index_capacity, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, dimensions, arginfo_class_Usearch_Index_dimensions, ZEND_ACC_PUBLIC)
@@ -1104,6 +1248,7 @@ static const zend_function_entry class_Usearch_Index_methods[] = {
 	ZEND_ME(Usearch_Index, hardwareAcceleration, arginfo_class_Usearch_Index_hardwareAcceleration, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, distance, arginfo_class_Usearch_Index_distance, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, metadata, arginfo_class_Usearch_Index_metadata, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
+	ZEND_ME(Usearch_Index, metadataBuffer, arginfo_class_Usearch_Index_metadataBuffer, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(Usearch_Index, version, arginfo_class_Usearch_Index_version, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(Usearch_Index, hardwareAccelerationCompiled, arginfo_class_Usearch_Index_hardwareAccelerationCompiled, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(Usearch_Index, hardwareAccelerationAvailable, arginfo_class_Usearch_Index_hardwareAccelerationAvailable, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)

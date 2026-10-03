@@ -118,8 +118,23 @@ namespace Usearch
         {
         }
 
+        /**
+         * Serializes the index and returns exactly the bytes `save()` writes
+         * to a file.
+         */
+        public function saveBuffer(): string
+        {
+        }
+
         /** Deserializes an index from `path` into heap memory. */
         public function load(string $path): void
+        {
+        }
+
+        /**
+         * Deserializes an index from an in-memory buffer into heap memory.
+         */
+        public function loadBuffer(string $buffer): void
         {
         }
 
@@ -129,6 +144,15 @@ namespace Usearch
          * Mutating methods raise until the instance is destroyed.
          */
         public function view(string $path): void
+        {
+        }
+
+        /**
+         * Memory-maps an in-memory buffer read-only. The view keeps referencing
+         * the bytes for its whole lifetime: the object retains its own copy, so
+         * the caller may unset theirs.
+         */
+        public function viewBuffer(string $buffer): void
         {
         }
 
@@ -195,6 +219,11 @@ namespace Usearch
 
         /** Reads the option set stored in an index file without loading it. */
         public static function metadata(string $path): array
+        {
+        }
+
+        /** Reads the option set stored in an in-memory buffer without loading it. */
+        public static function metadataBuffer(string $buffer): array
         {
         }
 

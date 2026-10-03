@@ -158,12 +158,30 @@ $restored = new Index(['dimensions' => 768]);
 $restored->load('/var/lib/search/docs.usearch');
 ```
 
+### `saveBuffer(): string`
+Serializes the index and returns exactly the bytes `save()` writes to a file:
+
+```php
+$bytes = $index->saveBuffer();   // stash in Redis, S3, a database blob...
+$copy = new Index(['dimensions' => 768]);
+$copy->loadBuffer($bytes);
+```
+
+### `loadBuffer(string $buffer): void`
+Deserializes an index from an in-memory buffer. Same post-load behaviour as `load()`: the buffer's
+metric and quantization become authoritative, and the `threads*` readback resets.
+
 ### `view(string $path): void`
 Memory-maps an index file **read-only**. The process shares the OS page cache instead of holding a
 private heap copy — 50 php-fpm workers viewing one 2 GB index consume one 2 GB of cache, not 100 GB
 of RAM. All mutating methods (`add`, `remove`, `rename`, `clear`, `reserve`, `changeMetric`, and the
 setter forms of `expansionAdd`/`expansionSearch`/`threadsAdd`/`threadsSearch`) raise
 `Usearch\Exception` while the instance is a view.
+
+### `viewBuffer(string $buffer): void`
+Memory-maps an in-memory buffer read-only, with the same rules as `view()`. The view keeps
+referencing the bytes for its whole lifetime, so the object retains its own copy — the caller may
+unset theirs.
 
 ### Introspection
 `size()`, `capacity()`, `dimensions()`, `connectivity()`, `memoryUsage()`, `serializedLength()`,
@@ -195,6 +213,10 @@ Reads an index file's option set without loading its vectors:
 ```php
 ['metric' => 1, 'quantization' => 1, 'dimensions' => 768, ...]
 ```
+
+### `static metadataBuffer(string $buffer): array`
+The in-memory twin of `metadata()`: reads the option set from a `saveBuffer()` payload without
+loading it.
 
 ### `static version(): string`
 Extension version plus the vendored USearch pin, e.g. `0.1.0+usearch.2.26.2`.

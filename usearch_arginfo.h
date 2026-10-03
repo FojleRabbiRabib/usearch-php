@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 8956792079c1cf5deedd1296eb95ef2736203a81 */
+ * Stub hash: aa127e4d7c0eb260c3a57dfab34e050bb00c247a */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_Usearch_Index___construct, 0, 0, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, options, IS_ARRAY, 0, "[]")
@@ -45,9 +45,18 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_save, 0, 1, 
 	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_saveBuffer, 0, 0, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
 #define arginfo_class_Usearch_Index_load arginfo_class_Usearch_Index_save
 
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_loadBuffer, 0, 1, IS_VOID, 0)
+	ZEND_ARG_TYPE_INFO(0, buffer, IS_STRING, 0)
+ZEND_END_ARG_INFO()
+
 #define arginfo_class_Usearch_Index_view arginfo_class_Usearch_Index_save
+
+#define arginfo_class_Usearch_Index_viewBuffer arginfo_class_Usearch_Index_loadBuffer
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_size, 0, 0, IS_LONG, 0)
 ZEND_END_ARG_INFO()
@@ -78,8 +87,7 @@ ZEND_END_ARG_INFO()
 
 #define arginfo_class_Usearch_Index_serializedLength arginfo_class_Usearch_Index_size
 
-ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_hardwareAcceleration, 0, 0, IS_STRING, 0)
-ZEND_END_ARG_INFO()
+#define arginfo_class_Usearch_Index_hardwareAcceleration arginfo_class_Usearch_Index_saveBuffer
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_distance, 0, 2, IS_DOUBLE, 0)
 	ZEND_ARG_TYPE_MASK(0, a, MAY_BE_ARRAY|MAY_BE_STRING, NULL)
@@ -90,8 +98,12 @@ ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_metadata, 0,
 	ZEND_ARG_TYPE_INFO(0, path, IS_STRING, 0)
 ZEND_END_ARG_INFO()
 
-#define arginfo_class_Usearch_Index_version arginfo_class_Usearch_Index_hardwareAcceleration
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_metadataBuffer, 0, 1, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, buffer, IS_STRING, 0)
+ZEND_END_ARG_INFO()
 
-#define arginfo_class_Usearch_Index_hardwareAccelerationCompiled arginfo_class_Usearch_Index_hardwareAcceleration
+#define arginfo_class_Usearch_Index_version arginfo_class_Usearch_Index_saveBuffer
 
-#define arginfo_class_Usearch_Index_hardwareAccelerationAvailable arginfo_class_Usearch_Index_hardwareAcceleration
+#define arginfo_class_Usearch_Index_hardwareAccelerationCompiled arginfo_class_Usearch_Index_saveBuffer
+
+#define arginfo_class_Usearch_Index_hardwareAccelerationAvailable arginfo_class_Usearch_Index_saveBuffer
