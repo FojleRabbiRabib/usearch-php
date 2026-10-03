@@ -6,6 +6,12 @@ Git tags carry the plain extension version (`v0.1.0`); each release pairs it wit
 a vendored USearch pin, recorded in the tag message, `php_usearch.h`, and the
 release notes. 0.1.0 vendored USearch 2.26.2.
 
+## [Unreleased]
+
+### Changed
+- The `phpinfo()`/`php --ri usearch` section now reports the upstream USearch pin, thread safety
+  (ZTS/NTS), the shipped feature set, and author credit alongside the version and SIMD dispatch.
+
 ## 0.1.0 - 2026-10-03
 
 ### Added

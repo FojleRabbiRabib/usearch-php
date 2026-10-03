@@ -41,13 +41,22 @@ PHP_MINFO_FUNCTION(usearch)
 	(void)zend_module;
 
 	php_info_print_table_start();
-	php_info_print_table_row(2, "usearch support", "enabled");
-	php_info_print_table_row(2, "extension version", PHP_USEARCH_VERSION);
-	php_info_print_table_row(2, "vendored USearch", PHP_USEARCH_VENDORED);
-	php_info_print_table_row(2, "hardware acceleration (compiled)",
+	php_info_print_table_header(2, "USearch support", "enabled");
+	php_info_print_table_row(2, "Version", PHP_USEARCH_VERSION);
+	php_info_print_table_row(2, "Upstream USearch", PHP_USEARCH_VENDORED);
+#ifdef ZTS
+	php_info_print_table_row(2, "Thread safety", "enabled (ZTS)");
+#else
+	php_info_print_table_row(2, "Thread safety", "disabled (NTS)");
+#endif
+	php_info_print_table_row(2, "Features",
+							 "hnsw, 10 metric spaces, 11 scalar formats, multi-key, "
+							 "packed vectors, memory-mapped views");
+	php_info_print_table_row(2, "SIMD dispatch (compiled)",
 							 usearch_hardware_acceleration_compiled());
-	php_info_print_table_row(2, "hardware acceleration (available)",
+	php_info_print_table_row(2, "SIMD dispatch (available)",
 							 usearch_hardware_acceleration_available());
+	php_info_print_table_row(2, "Author", "Fojle Rabbi (Rabib)");
 	php_info_print_table_end();
 }
 
