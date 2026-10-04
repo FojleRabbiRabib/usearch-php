@@ -143,6 +143,19 @@ must be cheap and side-effect free. Three contracts:
 - The graph still explores normally; a filter excluding most keys costs a full traversal and may
   return fewer than `$count` rows.
 
+### `static exactSearch(array $vectors, array|string $query, Metric|int $metric, int $count = 10): array`
+Exact brute-force top-k over a caller-supplied dataset — the true nearest neighbours, no HNSW
+graph and no index at all. Keys are the **0-based positions** in `$vectors`; the metric is required
+because there is no index to inherit one from:
+
+```php
+$truth = Index::exactSearch($corpus, $query, Metric::Cosine, 10);
+```
+
+This is the ground-truth generator for correctness experiments: compare it against `search()` to
+measure an index's recall on your own data. `$vectors` must be a list (arrays and packed strings
+may mix); a ragged or keyed list raises `ValueError`.
+
 ### `get(int $key): ?array`
 Returns the stored vector, or `null` when the key is absent. Quantized indexes return dequantized
 values, not the originals.

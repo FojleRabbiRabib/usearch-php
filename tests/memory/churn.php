@@ -174,6 +174,19 @@ for ($i = 0; $i < ITERATIONS; $i++) {
     }
     $idx->changeMetric(\Usearch\Metric::L2sq);
 
+    /* Exact brute-force search over caller data: hit, clamp, and rejects.
+     * Every path must free the dataset, query, and result buffers. */
+    Index::exactSearch([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]], [1.0, 2.0, 3.0], \Usearch\Metric::L2sq, 5);
+    Index::exactSearch([], [1.0, 2.0, 3.0], \Usearch\Metric::L2sq);
+    try {
+        Index::exactSearch(['k' => [1.0]], [1.0], \Usearch\Metric::L2sq);
+    } catch (\ValueError $e) {
+    }
+    try {
+        Index::exactSearch([[1.0], [1.0, 2.0]], [1.0], \Usearch\Metric::L2sq);
+    } catch (\ValueError $e) {
+    }
+
     /* An empty index: search returns no rows without allocating a result set. */
     $blank = new Index(['dimensions' => 8]);
     $blank->search($query, 10);

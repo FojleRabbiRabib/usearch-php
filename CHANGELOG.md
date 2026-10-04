@@ -17,6 +17,9 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 - `changeMetric()` accepts a **callable**: a custom distance receiving the two stored-format
   vectors as packed binary strings. It runs on the hot path, propagates throws, and refuses
   mutation or re-entrancy from inside the callback.
+- `static exactSearch(array $vectors, array|string $query, Metric|int $metric, int $count = 10):
+  array` — exact brute-force top-k over a caller-supplied dataset, keyed by list position; the
+  ground-truth generator for measuring an index's recall on your own data.
 
 ### Changed
 - The `phpinfo()`/`php --ri usearch` section now reports the upstream USearch pin, thread safety

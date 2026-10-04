@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 9cb8d9f8fafa74d99c6b12df63cbab2a9f68682f */
+ * Stub hash: 3b9fc9a39fadfe3c1958c8411a107dd62272d940 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_Usearch_Index___construct, 0, 0, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, options, IS_ARRAY, 0, "[]")
@@ -18,6 +18,13 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_filteredSearch, 0, 2, IS_ARRAY, 0)
 	ZEND_ARG_TYPE_MASK(0, query, MAY_BE_ARRAY|MAY_BE_STRING, NULL)
 	ZEND_ARG_TYPE_INFO(0, filter, IS_CALLABLE, 0)
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, count, IS_LONG, 0, "10")
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_exactSearch, 0, 3, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_INFO(0, vectors, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_MASK(0, query, MAY_BE_ARRAY|MAY_BE_STRING, NULL)
+	ZEND_ARG_OBJ_TYPE_MASK(0, metric, Usearch\\Metric, MAY_BE_LONG, NULL)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, count, IS_LONG, 0, "10")
 ZEND_END_ARG_INFO()
 

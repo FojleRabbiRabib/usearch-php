@@ -86,6 +86,20 @@ namespace Usearch
         }
 
         /**
+         * Exact brute-force top-k over a caller-supplied dataset — the true
+         * nearest neighbours, no graph. Keys are the 0-based positions in
+         * `$vectors`. The metric is required: there is no index to inherit
+         * one from.
+         */
+        public static function exactSearch(
+            array $vectors,
+            array|string $query,
+            Metric|int $metric,
+            int $count = 10,
+        ): array {
+        }
+
+        /**
          * Recovers the stored vector for `key`, or null when absent. Quantized
          * indexes return dequantized values, not the originals.
          */

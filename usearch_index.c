@@ -466,6 +466,132 @@ PHP_METHOD(Usearch_Index, filteredSearch)
 	efree(distances);
 }
 
+/* static exactSearch(array $vectors, array|string $query, Metric|int $metric, int $count = 10) */
+PHP_METHOD(Usearch_Index, exactSearch)
+{
+	zval *zv_vectors;
+	zval *zv_query;
+	zval *zv_metric;
+	zend_long count = 10;
+	zend_long m;
+	HashTable *ht;
+	uint32_t n;
+	size_t dims = 0;
+	float *dataset = NULL;
+	float *query = NULL;
+	bool owned = false;
+	usearch_key_t *keys;
+	usearch_distance_t *distances;
+	usearch_error_t error = NULL;
+
+	ZEND_PARSE_PARAMETERS_START(3, 4)
+	Z_PARAM_ZVAL(zv_vectors)
+	Z_PARAM_ZVAL(zv_query)
+	Z_PARAM_ZVAL(zv_metric)
+	Z_PARAM_OPTIONAL
+	Z_PARAM_LONG(count)
+	ZEND_PARSE_PARAMETERS_END();
+
+	if (usearch_metric_from_zval(zv_metric, &m) == FAILURE) {
+		return;
+	}
+	if (count <= 0) {
+		zend_throw_error(zend_ce_value_error, "count must be a positive integer");
+		return;
+	}
+	if (Z_TYPE_P(zv_vectors) != IS_ARRAY || !zend_array_is_list(Z_ARRVAL_P(zv_vectors))) {
+		zend_throw_error(zend_ce_value_error,
+						 "vectors must be a list of arrays or packed strings with consecutive 0-based keys");
+		return;
+	}
+	ht = Z_ARRVAL_P(zv_vectors);
+	n = zend_array_count(ht);
+	if (n == 0) {
+		array_init(return_value);
+		return;
+	}
+
+	/* The width comes from the first row; usearch_vector_in enforces it on
+	 * every row after that, so a ragged list fails loudly instead of
+	 * reinterpreting memory. */
+	{
+		zval *first = zend_hash_index_find(ht, 0);
+		if (Z_TYPE_P(first) == IS_ARRAY) {
+			dims = zend_array_count(Z_ARRVAL_P(first));
+		} else if (Z_TYPE_P(first) == IS_STRING) {
+			if (Z_STRLEN_P(first) % (zend_long)sizeof(float) != 0) {
+				zend_throw_error(zend_ce_value_error,
+								 "packed vectors must be a multiple of 4 bytes long");
+				return;
+			}
+			dims = (size_t)(Z_STRLEN_P(first) / (zend_long)sizeof(float));
+		} else {
+			zend_throw_error(zend_ce_value_error, "vectors must be arrays or packed strings");
+			return;
+		}
+		if (dims == 0) {
+			zend_throw_error(zend_ce_value_error, "vector dimension mismatch: expected > 0, got 0");
+			return;
+		}
+	}
+
+	dataset = (float *)safe_emalloc((size_t)n * dims, sizeof(float), 0);
+	for (uint32_t i = 0; i < n; i++) {
+		zval *row = zend_hash_index_find(ht, i);
+		float *buf;
+		bool row_owned = false;
+
+		if (usearch_vector_in(row, dims, &buf, &row_owned) == FAILURE) {
+			efree(dataset);
+			return;
+		}
+		memcpy(dataset + (size_t)i * dims, buf, dims * sizeof(float));
+		if (row_owned) {
+			efree(buf);
+		}
+	}
+
+	if (usearch_vector_in(zv_query, dims, &query, &owned) == FAILURE) {
+		efree(dataset);
+		return;
+	}
+
+	if ((size_t)count > (size_t)n) {
+		count = (zend_long)n;
+	}
+	keys = (usearch_key_t *)safe_emalloc((size_t)count, sizeof(usearch_key_t), 0);
+	distances = (usearch_distance_t *)safe_emalloc((size_t)count, sizeof(usearch_distance_t), 0);
+
+	/* One thread keeps tie ordering deterministic; brute force is exact, so
+	 * a drifting answer would not be a gate. */
+	usearch_exact_search(dataset, (size_t)n, dims * sizeof(float), query, 1, dims * sizeof(float),
+						 usearch_scalar_f32_k, dims, (usearch_metric_kind_t)m, (size_t)count, 1, keys,
+						 sizeof(usearch_key_t), distances, sizeof(usearch_distance_t), &error);
+
+	if (owned) {
+		efree(query);
+	}
+	efree(dataset);
+
+	if (usearch_check_error(&error) == FAILURE) {
+		efree(keys);
+		efree(distances);
+		return;
+	}
+
+	array_init_size(return_value, (uint32_t)count);
+	for (zend_long i = 0; i < count; i++) {
+		zval row;
+		array_init_size(&row, 2);
+		add_assoc_long_ex(&row, "key", sizeof("key") - 1, (zend_long)keys[i]);
+		add_assoc_double_ex(&row, "distance", sizeof("distance") - 1, (double)distances[i]);
+		add_next_index_zval(return_value, &row);
+	}
+
+	efree(keys);
+	efree(distances);
+}
+
 PHP_METHOD(Usearch_Index, get)
 {
 	usearch_index_object *intern = Z_USEARCH_INDEX_P(ZEND_THIS);
@@ -1541,6 +1667,7 @@ static const zend_function_entry class_Usearch_Index_methods[] = {
 	ZEND_ME(Usearch_Index, add, arginfo_class_Usearch_Index_add, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, search, arginfo_class_Usearch_Index_search, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, filteredSearch, arginfo_class_Usearch_Index_filteredSearch, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, exactSearch, arginfo_class_Usearch_Index_exactSearch, ZEND_ACC_PUBLIC|ZEND_ACC_STATIC)
 	ZEND_ME(Usearch_Index, get, arginfo_class_Usearch_Index_get, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, contains, arginfo_class_Usearch_Index_contains, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, count, arginfo_class_Usearch_Index_count, ZEND_ACC_PUBLIC)
