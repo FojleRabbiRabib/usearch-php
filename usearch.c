@@ -51,7 +51,8 @@ PHP_MINFO_FUNCTION(usearch)
 #endif
 	php_info_print_table_row(2, "Features",
 							 "hnsw, 10 metric spaces, 11 scalar formats, multi-key, "
-							 "packed vectors, memory-mapped views");
+							 "packed vectors, memory-mapped views, buffer persistence, "
+							 "filtered search, custom metrics, exact search");
 	php_info_print_table_row(2, "SIMD dispatch (compiled)",
 							 usearch_hardware_acceleration_compiled());
 	php_info_print_table_row(2, "SIMD dispatch (available)",
