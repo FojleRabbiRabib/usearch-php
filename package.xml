@@ -83,6 +83,8 @@ index persistence, and runtime SIMD dispatch (AVX-512, AVX2, NEON, SVE).</descri
    <file role="doc" name="docs/security.md"/>
    <file role="doc" name="docs/benchmarks.md"/>
    <file role="doc" name="examples/basic.php"/>
+   <file role="doc" name="examples/persistence.php"/>
+   <file role="doc" name="examples/advanced-search.php"/>
    <file role="test" name="tests/memory/churn.php"/>
    <file role="test" name="tests/quality/recall.php"/>
    <file role="test" name="tests/quality/metrics.php"/>

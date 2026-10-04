@@ -58,8 +58,14 @@ vector-search throughput is corpus-dependent, so every number there names its da
 
 ## Features
 
-- **Full USearch core surface** — create, add, search, get, contains, count, remove, rename, clear,
-  reserve, save, load, and read-only memory-mapped `view`.
+- **The complete USearch surface** — all 40 C API symbols bound: create, add, search, get, contains,
+  count, remove, rename, clear, reserve, save, load, read-only memory-mapped `view`, and their
+  in-memory buffer twins (`saveBuffer`, `loadBuffer`, `viewBuffer`, `metadataBuffer`).
+- **Predicate-filtered search** — `filteredSearch()` returns only the keys your PHP callback
+  accepts; a throw inside the callback aborts cleanly and the index stays usable.
+- **Custom metrics and exact search** — `changeMetric(callable)` installs a PHP distance over the
+  stored-format vectors; `static exactSearch()` computes the true brute-force top-k over any
+  dataset, no index required.
 - **10 metric spaces** — Cosine, Inner Product, L2², Haversine, Divergence, Pearson, Jaccard,
   Hamming, Tanimoto, Sorensen.
 - **11 quantization formats** — F32, F64, F16, BF16, I8, U8, B1, and the E5M2/E4M3/E2M3/E3M2
