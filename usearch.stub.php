@@ -202,8 +202,18 @@ namespace Usearch
         {
         }
 
-        /** Retunes the metric space on an existing index. */
-        public function changeMetric(Metric|int $metric): void
+        /**
+         * Retunes the metric space on an existing index. Pass a `Metric` case
+         * (or its int value) to switch between the built-in spaces, or a
+         * callable to install a custom distance: the callable receives the two
+         * vectors as packed binary strings in the index's storage format and
+         * returns the distance as a float. It runs on the hot path — every
+         * comparison — and must not mutate or re-enter the index. `$kind`
+         * labels the metric for serialization; the default `0` (unknown) is
+         * the honest value for a custom callable, which itself can never be
+         * serialized.
+         */
+        public function changeMetric(Metric|int|callable $metric, Metric|int $kind = 0): void
         {
         }
 

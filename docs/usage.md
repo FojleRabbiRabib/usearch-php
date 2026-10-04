@@ -218,8 +218,31 @@ $index->expansionSearch(256);  // raise recall
 echo $index->expansionSearch(); // read it back
 ```
 
-### `changeMetric(Metric|int $metric): void`
-Retunes the metric on an existing index.
+### `changeMetric(Metric|int|callable $metric, Metric|int $kind = 0): void`
+Retunes the metric on an existing index. Pass a `Metric` case to switch between the built-in
+spaces, or a **callable** to install a custom distance:
+
+```php
+$index->changeMetric(function (string $a, string $b): float {
+    // $a and $b are the stored-format bytes of two vectors
+    [$x1, $x2] = unpack('g2', $a);
+    [$y1, $y2] = unpack('g2', $b);
+    return abs($x1 - $y1) + abs($x2 - $y2);   // L1
+});
+```
+
+Contracts of a custom metric:
+
+- It receives the vectors as **packed binary strings in the index's storage format** (f32 bytes on
+  an F32 index; bit-packed words under `B1`) and returns the distance as a float.
+- It runs on the **hot path** — every comparison during `add()`, `search()`, and `distance()`.
+  A userland metric is for correctness experiments, not production throughput.
+- A throw inside it aborts the operation and propagates; the index stays usable.
+- It must not mutate the index (raises `Usearch\Exception`) and must not re-enter it (measuring or
+  searching the same index from inside its own callback raises).
+- `$kind` labels the metric for serialization; the honest value for a custom callable is the
+  default `0` (unknown). The callable itself is **runtime-only**: it is never serialized, so an
+  index moved through `save()`/`loadBuffer()` must install its metric again after loading.
 
 ### `distance(array|string $a, array|string $b): float`
 Distance between two vectors under this index's metric.

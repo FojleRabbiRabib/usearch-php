@@ -48,11 +48,13 @@ typedef struct _usearch_index_object {
 	void *handle;
 	bool read_only;
 	bool searching;
+	bool computing_metric;
 	zend_long metric_kind;
 	zend_long scalar_kind;
 	zend_long threads_add;
 	zend_long threads_search;
 	zend_string *view_buffer;
+	void *metric_state;
 	zend_object std;
 } usearch_index_object;
 

@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: 273ee3b6a8c9cfb65ebc35dd2f81a0e2c44b0f50 */
+ * Stub hash: 9cb8d9f8fafa74d99c6b12df63cbab2a9f68682f */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_Usearch_Index___construct, 0, 0, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, options, IS_ARRAY, 0, "[]")
@@ -86,7 +86,8 @@ ZEND_END_ARG_INFO()
 #define arginfo_class_Usearch_Index_threadsSearch arginfo_class_Usearch_Index_threadsAdd
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_changeMetric, 0, 1, IS_VOID, 0)
-	ZEND_ARG_OBJ_TYPE_MASK(0, metric, Usearch\\Metric, MAY_BE_LONG, NULL)
+	ZEND_ARG_OBJ_TYPE_MASK(0, metric, Usearch\\Metric, MAY_BE_LONG|MAY_BE_CALLABLE, NULL)
+	ZEND_ARG_OBJ_TYPE_MASK(0, kind, Usearch\\Metric, MAY_BE_LONG, "0")
 ZEND_END_ARG_INFO()
 
 #define arginfo_class_Usearch_Index_memoryUsage arginfo_class_Usearch_Index_size

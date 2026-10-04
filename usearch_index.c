@@ -10,17 +10,23 @@
 zend_class_entry *usearch_ce_index;
 static zend_object_handlers usearch_index_handlers;
 
+/* Defined beside changeMetric(); forward-declared here because free_obj
+ * releases the custom-metric state after the native index is gone. */
+static void php_usearch_metric_state_free(void *state);
+
 static zend_object *usearch_index_create_object(zend_class_entry *ce)
 {
 	usearch_index_object *intern = zend_object_alloc(sizeof(usearch_index_object), ce);
 	intern->handle = NULL;
 	intern->read_only = false;
 	intern->searching = false;
+	intern->computing_metric = false;
 	intern->metric_kind = usearch_metric_cos_k;
 	intern->scalar_kind = usearch_scalar_f32_k;
 	intern->threads_add = 0;
 	intern->threads_search = 0;
 	intern->view_buffer = NULL;
+	intern->metric_state = NULL;
 	zend_object_std_init(&intern->std, ce);
 	object_properties_init(&intern->std, ce);
 	intern->std.handlers = &usearch_index_handlers;
@@ -40,6 +46,12 @@ static void usearch_index_free_object(zend_object *obj)
 	if (intern->view_buffer != NULL) {
 		zend_string_release(intern->view_buffer);
 		intern->view_buffer = NULL;
+	}
+	/* The custom-metric state is released after usearch_free for the same
+	 * reason: the punned metric dereferences it until the index is gone. */
+	if (intern->metric_state != NULL) {
+		php_usearch_metric_state_free(intern->metric_state);
+		intern->metric_state = NULL;
 	}
 	zend_object_std_dtor(&intern->std);
 }
@@ -226,7 +238,8 @@ PHP_METHOD(Usearch_Index, add)
 	if (owned) {
 		efree(data);
 	}
-	if (usearch_check_error(&error) == FAILURE) {
+	/* A custom metric runs userland for every comparison during insertion. */
+	if (EG(exception) || usearch_check_error(&error) == FAILURE) {
 		return;
 	}
 }
@@ -256,6 +269,11 @@ PHP_METHOD(Usearch_Index, search)
 
 	if (count <= 0) {
 		zend_throw_error(zend_ce_value_error, "count must be a positive integer");
+		return;
+	}
+
+	if (intern->computing_metric) {
+		usearch_throw("cannot re-enter the index from inside its own custom metric callback");
 		return;
 	}
 
@@ -295,7 +313,8 @@ PHP_METHOD(Usearch_Index, search)
 		efree(data);
 	}
 
-	if (usearch_check_error(&error) == FAILURE) {
+	/* A custom metric may have run userland inside the traversal. */
+	if (EG(exception) || usearch_check_error(&error) == FAILURE) {
 		efree(keys);
 		efree(distances);
 		return;
@@ -380,6 +399,11 @@ PHP_METHOD(Usearch_Index, filteredSearch)
 
 	if (count <= 0) {
 		zend_throw_error(zend_ce_value_error, "count must be a positive integer");
+		return;
+	}
+
+	if (intern->computing_metric) {
+		usearch_throw("cannot re-enter the index from inside its own custom metric callback");
 		return;
 	}
 
@@ -1068,12 +1092,77 @@ PHP_METHOD(Usearch_Index, threadsSearch)
 	RETURN_LONG(intern->threads_search);
 }
 
+/* A userland metric receives the two stored-format vectors as packed binary
+ * strings and returns the distance. Upstream invokes stateful custom metrics
+ * with a third argument (index_plugins.hpp: invoke_array_array_third), so the
+ * trampoline recovers this state struct from the callback's own parameter
+ * even though the C API's usearch_metric_t advertises two. The struct lives
+ * on the object and is released in free_obj, after usearch_free has
+ * dismantled the punned metric holding the function pointer. */
+typedef struct {
+	zend_fcall_info fci;
+	zend_fcall_info_cache fcc;
+	usearch_index_object *intern;
+	size_t vector_bytes;
+} php_usearch_metric_state;
+
+static void php_usearch_metric_state_free(void *state)
+{
+	php_usearch_metric_state *st = (php_usearch_metric_state *)state;
+	if (st == NULL) {
+		return;
+	}
+	if (Z_TYPE(st->fci.function_name) != IS_UNDEF) {
+		zval_ptr_dtor(&st->fci.function_name);
+	}
+	efree(st);
+}
+
+static usearch_distance_t php_usearch_metric_trampoline(void const *a, void const *b, void *state)
+{
+	php_usearch_metric_state *st = (php_usearch_metric_state *)state;
+	zval params[2];
+	zval retval;
+	double d;
+
+	/* A re-entrant call (the metric reaching back into a computation that
+	 * is itself invoking the metric) would recurse without bound; refuse
+	 * it the same way the method-level guards do. */
+	if (st->intern->computing_metric || EG(exception)) {
+		return 0;
+	}
+	st->intern->computing_metric = true;
+
+	zend_string *sa = zend_string_init((const char *)a, st->vector_bytes, 0);
+	zend_string *sb = zend_string_init((const char *)b, st->vector_bytes, 0);
+	ZVAL_STR(&params[0], sa);
+	ZVAL_STR(&params[1], sb);
+	st->fci.param_count = 2;
+	st->fci.params = params;
+	st->fci.retval = &retval;
+	zend_call_function(&st->fci, &st->fcc);
+	st->intern->computing_metric = false;
+
+	if (EG(exception)) {
+		zval_ptr_dtor(&retval);
+		zval_ptr_dtor(&params[0]);
+		zval_ptr_dtor(&params[1]);
+		return 0;
+	}
+	d = zval_get_double(&retval);
+	zval_ptr_dtor(&retval);
+	zval_ptr_dtor(&params[0]);
+	zval_ptr_dtor(&params[1]);
+	return (usearch_distance_t)d;
+}
+
 PHP_METHOD(Usearch_Index, changeMetric)
 {
 	(void)return_value; /* void method */
 	usearch_index_object *intern = Z_USEARCH_INDEX_P(ZEND_THIS);
 	void *handle = usearch_index_require_handle(intern);
 	zval *zv_metric;
+	zval *zv_kind = NULL;
 	zend_long m;
 	usearch_error_t error = NULL;
 
@@ -1084,9 +1173,65 @@ PHP_METHOD(Usearch_Index, changeMetric)
 		return;
 	}
 
-	ZEND_PARSE_PARAMETERS_START(1, 1)
+	ZEND_PARSE_PARAMETERS_START(1, 2)
 	Z_PARAM_ZVAL(zv_metric)
+	Z_PARAM_OPTIONAL
+	Z_PARAM_ZVAL_OR_NULL(zv_kind)
 	ZEND_PARSE_PARAMETERS_END();
+
+	if (zend_is_callable(zv_metric, 0, NULL)) {
+		/* Custom distance: upstream wraps the function pointer and the state
+		 * into one stateful metric and invokes fn(a, b, state). The `kind`
+		 * only labels serialization; 0 (unknown) is the honest default, and
+		 * the callable itself can never be serialized. */
+		php_usearch_metric_state *st = (php_usearch_metric_state *)emalloc(sizeof(*st));
+		zend_long kind = 0;
+		size_t dims;
+		memset(st, 0, sizeof(*st));
+		if (zv_kind != NULL && Z_TYPE_P(zv_kind) != IS_NULL && usearch_metric_from_zval(zv_kind, &kind) == FAILURE) {
+			efree(st);
+			return;
+		}
+		if (!zend_is_callable_ex(zv_metric, NULL, 0, NULL, &st->fcc, NULL)) {
+			efree(st);
+			usearch_throw("metric callable could not be resolved");
+			return;
+		}
+		dims = usearch_dimensions((usearch_index_t)handle, &error);
+		if (usearch_check_error(&error) == FAILURE) {
+			efree(st);
+			return;
+		}
+		st->vector_bytes = usearch_php_bytes_per_vector((int)intern->scalar_kind, dims);
+		if (st->vector_bytes == 0) {
+			efree(st);
+			usearch_throw("unsupported quantization for this index");
+			return;
+		}
+		st->intern = intern;
+		st->fci.size = sizeof(st->fci);
+		ZVAL_COPY(&st->fci.function_name, zv_metric);
+		st->fci.object = st->fcc.object;
+
+		/* The cast crosses upstream's own seam: usearch_change_metric takes a
+		 * two-argument usearch_metric_t but invokes stateful metrics with a
+		 * third argument (index_plugins.hpp: invoke_array_array_third), which
+		 * is how the state pointer reaches the trampoline. */
+		usearch_change_metric((usearch_index_t)handle,
+							  (usearch_metric_t)(void *)php_usearch_metric_trampoline, st,
+							  (usearch_metric_kind_t)kind, &error);
+		if (usearch_check_error(&error) == FAILURE) {
+			php_usearch_metric_state_free(st);
+			return;
+		}
+		/* Success: only now retire the previous metric's state. */
+		if (intern->metric_state != NULL) {
+			php_usearch_metric_state_free(intern->metric_state);
+		}
+		intern->metric_state = st;
+		intern->metric_kind = kind;
+		return;
+	}
 
 	if (usearch_metric_from_zval(zv_metric, &m) == FAILURE) {
 		return;
@@ -1095,6 +1240,11 @@ PHP_METHOD(Usearch_Index, changeMetric)
 	usearch_change_metric_kind((usearch_index_t)handle, (usearch_metric_kind_t)m, &error);
 	if (usearch_check_error(&error) == FAILURE) {
 		return;
+	}
+	/* Back on a built-in space: the custom callable is no longer reachable. */
+	if (intern->metric_state != NULL) {
+		php_usearch_metric_state_free(intern->metric_state);
+		intern->metric_state = NULL;
 	}
 	intern->metric_kind = m;
 }
@@ -1190,6 +1340,33 @@ PHP_METHOD(Usearch_Index, distance)
 		return;
 	}
 
+	/* A custom metric exists only on the index's own metric object and is
+	 * never reachable through the standalone builder. On an f32 index the
+	 * marshalled buffers are already in the stored format, so they go in
+	 * raw; quantized indexes take the same quantize-and-measure path the
+	 * built-in metrics use below. */
+	if ((zend_long)intern->metric_kind == (zend_long)usearch_metric_unknown_k && (zend_long)intern->scalar_kind == (zend_long)usearch_scalar_f32_k) {
+		double dd = 0.0;
+
+		if (intern->computing_metric || usearch_php_index_distance(handle, buf_a, buf_b, &dd) != 0) {
+			if (owned_a)
+				efree(buf_a);
+			if (owned_b)
+				efree(buf_b);
+			usearch_throw("cannot measure inside this index's own custom metric callback");
+			return;
+		}
+		d = (usearch_distance_t)dd;
+		if (owned_a)
+			efree(buf_a);
+		if (owned_b)
+			efree(buf_b);
+		if (usearch_check_error(&error) == FAILURE || EG(exception)) {
+			return;
+		}
+		RETURN_DOUBLE((double)d);
+	}
+
 	/* usearch_distance() does not convert: its scalar_kind argument says what
 	 * the buffers already hold, and it builds a metric over exactly that. So
 	 * the buffers must be in the index's stored format before the call, which
@@ -1258,7 +1435,8 @@ PHP_METHOD(Usearch_Index, distance)
 	if (owned_b)
 		efree(buf_b);
 
-	if (usearch_check_error(&error) == FAILURE) {
+	/* The custom metric may have run userland inside usearch_php_index_distance. */
+	if (usearch_check_error(&error) == FAILURE || EG(exception)) {
 		return;
 	}
 	RETURN_DOUBLE((double)d);

@@ -14,6 +14,9 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 - `filteredSearch(array|string $query, callable $filter, int $count = 10): array` — predicate-
   filtered nearest-neighbour search; a throw inside the predicate aborts cleanly, and mutating the
   index from inside the predicate is rejected.
+- `changeMetric()` accepts a **callable**: a custom distance receiving the two stored-format
+  vectors as packed binary strings. It runs on the hot path, propagates throws, and refuses
+  mutation or re-entrancy from inside the callback.
 
 ### Changed
 - The `phpinfo()`/`php --ri usearch` section now reports the upstream USearch pin, thread safety

@@ -148,6 +148,32 @@ for ($i = 0; $i < ITERATIONS; $i++) {
     } catch (\ValueError $e) {
     }
 
+    /* Custom metric: install, measure, throw from the callback, re-enter,
+     * and switch back. Each path must free the trampoline strings and the
+     * state, and leaving the callable installed until teardown must not
+     * leak the state either. */
+    $idx->changeMetric(function (string $a, string $b): float {
+        return 0.5;
+    });
+    $idx->distance([1.0, 2.0], [3.0, 4.0]);
+    $idx->search($query, 2);
+    try {
+        $idx->changeMetric(function (string $a, string $b): float {
+            throw new \RuntimeException('churn');
+        });
+        $idx->distance([1.0, 2.0], [3.0, 4.0]);
+    } catch (\RuntimeException $e) {
+    }
+    try {
+        $idx->changeMetric(function (string $a, string $b) use ($idx): float {
+            $idx->add(42, [0.0, 0.0, 0.0]);
+            return 0.5;
+        });
+        $idx->distance([1.0, 2.0], [3.0, 4.0]);
+    } catch (\Usearch\Exception $e) {
+    }
+    $idx->changeMetric(\Usearch\Metric::L2sq);
+
     /* An empty index: search returns no rows without allocating a result set. */
     $blank = new Index(['dimensions' => 8]);
     $blank->search($query, 10);

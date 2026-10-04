@@ -34,6 +34,9 @@ zend_result usearch_reject_if_immutable(usearch_index_object *intern)
 	if (intern->searching) {
 		return usearch_throw("cannot mutate the index while a filteredSearch() callback is running");
 	}
+	if (intern->computing_metric) {
+		return usearch_throw("cannot mutate the index while its custom metric callback is running");
+	}
 	if (intern->read_only) {
 		return usearch_throw("cannot modify a memory-mapped read-only index view");
 	}
