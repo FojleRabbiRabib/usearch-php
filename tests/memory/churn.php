@@ -126,6 +126,28 @@ for ($i = 0; $i < ITERATIONS; $i++) {
         unlink($bad);
     }
 
+    /* Filtered search: keep, drop, throw, and mutate-from-callback. Every
+     * path must free the search buffers and the trampoline state. */
+    $idx->filteredSearch($query, fn (int $key): bool => true, 3);
+    $idx->filteredSearch($query, fn (int $key): bool => false, 3);
+    try {
+        $idx->filteredSearch($query, function (int $key): bool {
+            throw new \RuntimeException('churn');
+        }, 3);
+    } catch (\RuntimeException $e) {
+    }
+    try {
+        $idx->filteredSearch($query, function (int $key) use ($idx): bool {
+            $idx->add(PHP_INT_MAX - $key, [0.0, 0.0, 0.0]);
+            return true;
+        }, 3);
+    } catch (\Usearch\Exception $e) {
+    }
+    try {
+        $idx->filteredSearch($query, fn (int $key): bool => true, 0);
+    } catch (\ValueError $e) {
+    }
+
     /* An empty index: search returns no rows without allocating a result set. */
     $blank = new Index(['dimensions' => 8]);
     $blank->search($query, 10);

@@ -30,7 +30,7 @@ zend_result usearch_check_error(usearch_error_t *error);
 
 /* Raise when the instance was opened read-only (view) and a mutation is
  * attempted; returns FAILURE so the caller can bail before touching mmap. */
-zend_result usearch_reject_if_read_only(usearch_index_object *intern);
+zend_result usearch_reject_if_immutable(usearch_index_object *intern);
 
 /* Marshal a PHP array or packed binary string into a float buffer.
  * Arrays are converted into a freshly allocated buffer (*owned is true,

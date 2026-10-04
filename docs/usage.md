@@ -126,6 +126,23 @@ Returns up to `$count` rows, nearest first:
 Approximate by construction — the returned set is the HNSW graph's best answer, not a guaranteed
 exact top-k. Raise `expansionSearch` for higher recall at higher cost.
 
+### `filteredSearch(array|string $query, callable $filter, int $count = 10): array`
+Like `search()`, but a candidate is only included when `$filter($key)` returns truthy:
+
+```php
+$visible = $index->filteredSearch($query, fn (int $key): bool => $acl->canRead($key), 5);
+```
+
+The predicate runs on the hot path — it is called for every candidate the traversal visits — and
+must be cheap and side-effect free. Three contracts:
+
+- **Throwing propagates.** An exception inside the predicate aborts the search and surfaces from
+  `filteredSearch()`; the index remains fully usable afterwards.
+- **No mutation.** Calling any mutating method on the index being searched from inside the
+  predicate raises `Usearch\Exception`.
+- The graph still explores normally; a filter excluding most keys costs a full traversal and may
+  return fewer than `$count` rows.
+
 ### `get(int $key): ?array`
 Returns the stored vector, or `null` when the key is absent. Quantized indexes return dequantized
 values, not the originals.

@@ -1,5 +1,5 @@
 /* This is a generated file, edit the .stub.php file instead.
- * Stub hash: aa127e4d7c0eb260c3a57dfab34e050bb00c247a */
+ * Stub hash: 273ee3b6a8c9cfb65ebc35dd2f81a0e2c44b0f50 */
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_class_Usearch_Index___construct, 0, 0, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, options, IS_ARRAY, 0, "[]")
@@ -12,6 +12,12 @@ ZEND_END_ARG_INFO()
 
 ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_search, 0, 1, IS_ARRAY, 0)
 	ZEND_ARG_TYPE_MASK(0, query, MAY_BE_ARRAY|MAY_BE_STRING, NULL)
+	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, count, IS_LONG, 0, "10")
+ZEND_END_ARG_INFO()
+
+ZEND_BEGIN_ARG_WITH_RETURN_TYPE_INFO_EX(arginfo_class_Usearch_Index_filteredSearch, 0, 2, IS_ARRAY, 0)
+	ZEND_ARG_TYPE_MASK(0, query, MAY_BE_ARRAY|MAY_BE_STRING, NULL)
+	ZEND_ARG_TYPE_INFO(0, filter, IS_CALLABLE, 0)
 	ZEND_ARG_TYPE_INFO_WITH_DEFAULT_VALUE(0, count, IS_LONG, 0, "10")
 ZEND_END_ARG_INFO()
 

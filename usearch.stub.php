@@ -76,6 +76,16 @@ namespace Usearch
         }
 
         /**
+         * Like `search()`, but only keys whose predicate returns truthy are
+         * included. The predicate receives the candidate key and runs on the
+         * hot path; it must not mutate the index, and a throw inside it aborts
+         * the search and propagates.
+         */
+        public function filteredSearch(array|string $query, callable $filter, int $count = 10): array
+        {
+        }
+
+        /**
          * Recovers the stored vector for `key`, or null when absent. Quantized
          * indexes return dequantized values, not the originals.
          */

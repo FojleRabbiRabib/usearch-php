@@ -15,6 +15,7 @@ static zend_object *usearch_index_create_object(zend_class_entry *ce)
 	usearch_index_object *intern = zend_object_alloc(sizeof(usearch_index_object), ce);
 	intern->handle = NULL;
 	intern->read_only = false;
+	intern->searching = false;
 	intern->metric_kind = usearch_metric_cos_k;
 	intern->scalar_kind = usearch_scalar_f32_k;
 	intern->threads_add = 0;
@@ -178,7 +179,7 @@ PHP_METHOD(Usearch_Index, add)
 	if (handle == NULL) {
 		return;
 	}
-	if (usearch_reject_if_read_only(intern) == FAILURE) {
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
 		return;
 	}
 
@@ -313,6 +314,134 @@ PHP_METHOD(Usearch_Index, search)
 	efree(distances);
 }
 
+/* filteredSearch() must abort cleanly when the userland predicate throws:
+ * the C ABI has no error channel out of the filter, so once EG(exception)
+ * is set the trampoline excludes every remaining candidate — upstream then
+ * simply finishes its traversal — and the wrapper re-checks the pending
+ * exception after usearch_filtered_search returns. The state lives on the
+ * caller's stack, which is safe because the filtered search is synchronous
+ * and single-threaded on this ABI. */
+typedef struct {
+	zend_fcall_info *fci;
+	zend_fcall_info_cache *fcc;
+	unsigned char thrown;
+} php_usearch_filter_state;
+
+static int php_usearch_filter_trampoline(usearch_key_t key, void *state)
+{
+	php_usearch_filter_state *st = (php_usearch_filter_state *)state;
+	zval params[1];
+	zval retval;
+	int keep;
+
+	if (st->thrown) {
+		return 0;
+	}
+	ZVAL_LONG(&params[0], (zend_long)key);
+	st->fci->param_count = 1;
+	st->fci->params = params;
+	st->fci->retval = &retval;
+	zend_call_function(st->fci, st->fcc);
+	if (EG(exception)) {
+		st->thrown = 1;
+		return 0;
+	}
+	keep = zend_is_true(&retval) ? 1 : 0;
+	zval_ptr_dtor(&retval);
+	return keep;
+}
+
+PHP_METHOD(Usearch_Index, filteredSearch)
+{
+	usearch_index_object *intern = Z_USEARCH_INDEX_P(ZEND_THIS);
+	void *handle = usearch_index_require_handle(intern);
+	zval *zv_query;
+	zend_fcall_info fci;
+	zend_fcall_info_cache fcc;
+	zend_long count = 10;
+	php_usearch_filter_state state;
+	usearch_error_t error = NULL;
+	size_t dims, found;
+	float *data;
+	bool owned;
+	usearch_key_t *keys;
+	usearch_distance_t *distances;
+
+	if (handle == NULL) {
+		return;
+	}
+
+	ZEND_PARSE_PARAMETERS_START(2, 3)
+	Z_PARAM_ZVAL(zv_query)
+	Z_PARAM_FUNC(fci, fcc)
+	Z_PARAM_OPTIONAL
+	Z_PARAM_LONG(count)
+	ZEND_PARSE_PARAMETERS_END();
+
+	if (count <= 0) {
+		zend_throw_error(zend_ce_value_error, "count must be a positive integer");
+		return;
+	}
+
+	dims = usearch_effective_dims(handle, intern->metric_kind, &error);
+	if (usearch_check_error(&error) == FAILURE) {
+		return;
+	}
+
+	if (usearch_vector_in(zv_query, dims, &data, &owned) == FAILURE) {
+		return;
+	}
+
+	{
+		size_t have = usearch_size((usearch_index_t)handle, &error);
+		if (usearch_check_error(&error) == FAILURE) {
+			if (owned) {
+				efree(data);
+			}
+			return;
+		}
+		if ((size_t)count > have) {
+			count = (zend_long)have;
+		}
+	}
+
+	keys = (usearch_key_t *)safe_emalloc((size_t)count, sizeof(usearch_key_t), 0);
+	distances = (usearch_distance_t *)safe_emalloc((size_t)count, sizeof(usearch_distance_t), 0);
+
+	/* The window where userland runs: every mutator checks this flag and
+	 * refuses, so the callback cannot reshape the graph under the traversal. */
+	state.fci = &fci;
+	state.fcc = &fcc;
+	state.thrown = 0;
+	intern->searching = true;
+	found = usearch_filtered_search((usearch_index_t)handle, data, usearch_scalar_f32_k,
+									(size_t)count, php_usearch_filter_trampoline, &state,
+									keys, distances, &error);
+	intern->searching = false;
+
+	if (owned) {
+		efree(data);
+	}
+
+	if (EG(exception) || usearch_check_error(&error) == FAILURE) {
+		efree(keys);
+		efree(distances);
+		return;
+	}
+
+	array_init_size(return_value, (uint32_t)found);
+	for (size_t i = 0; i < found; i++) {
+		zval row;
+		array_init_size(&row, 2);
+		add_assoc_long_ex(&row, "key", sizeof("key") - 1, (zend_long)keys[i]);
+		add_assoc_double_ex(&row, "distance", sizeof("distance") - 1, (double)distances[i]);
+		add_next_index_zval(return_value, &row);
+	}
+
+	efree(keys);
+	efree(distances);
+}
+
 PHP_METHOD(Usearch_Index, get)
 {
 	usearch_index_object *intern = Z_USEARCH_INDEX_P(ZEND_THIS);
@@ -412,7 +541,7 @@ PHP_METHOD(Usearch_Index, remove)
 	if (handle == NULL) {
 		return;
 	}
-	if (usearch_reject_if_read_only(intern) == FAILURE) {
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
 		return;
 	}
 
@@ -438,7 +567,7 @@ PHP_METHOD(Usearch_Index, rename)
 	if (handle == NULL) {
 		return;
 	}
-	if (usearch_reject_if_read_only(intern) == FAILURE) {
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
 		return;
 	}
 
@@ -464,7 +593,7 @@ PHP_METHOD(Usearch_Index, clear)
 	if (handle == NULL) {
 		return;
 	}
-	if (usearch_reject_if_read_only(intern) == FAILURE) {
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
 		return;
 	}
 
@@ -485,7 +614,7 @@ PHP_METHOD(Usearch_Index, reserve)
 	if (handle == NULL) {
 		return;
 	}
-	if (usearch_reject_if_read_only(intern) == FAILURE) {
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
 		return;
 	}
 
@@ -561,6 +690,9 @@ PHP_METHOD(Usearch_Index, load)
 	if (handle == NULL) {
 		return;
 	}
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
+		return;
+	}
 
 	ZEND_PARSE_PARAMETERS_START(1, 1)
 	Z_PARAM_PATH(path, path_len)
@@ -600,6 +732,9 @@ PHP_METHOD(Usearch_Index, loadBuffer)
 	if (handle == NULL) {
 		return;
 	}
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
+		return;
+	}
 
 	ZEND_PARSE_PARAMETERS_START(1, 1)
 	Z_PARAM_STRING(buffer, buffer_len)
@@ -633,6 +768,9 @@ PHP_METHOD(Usearch_Index, view)
 	usearch_error_t error = NULL;
 
 	if (handle == NULL) {
+		return;
+	}
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
 		return;
 	}
 
@@ -670,6 +808,9 @@ PHP_METHOD(Usearch_Index, viewBuffer)
 	usearch_error_t error = NULL;
 
 	if (handle == NULL) {
+		return;
+	}
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
 		return;
 	}
 
@@ -800,7 +941,7 @@ PHP_METHOD(Usearch_Index, expansionAdd)
 	ZEND_PARSE_PARAMETERS_END();
 
 	if (!exp_is_null) {
-		if (usearch_reject_if_read_only(intern) == FAILURE) {
+		if (usearch_reject_if_immutable(intern) == FAILURE) {
 			return;
 		}
 		if (exp < 0) {
@@ -834,7 +975,7 @@ PHP_METHOD(Usearch_Index, expansionSearch)
 	ZEND_PARSE_PARAMETERS_END();
 
 	if (!exp_is_null) {
-		if (usearch_reject_if_read_only(intern) == FAILURE) {
+		if (usearch_reject_if_immutable(intern) == FAILURE) {
 			return;
 		}
 		if (exp < 0) {
@@ -871,7 +1012,7 @@ PHP_METHOD(Usearch_Index, threadsAdd)
 		/* Raising the thread budget makes upstream reallocate its node and
 		 * context buffers, which materialises a memory-mapped view into a
 		 * private heap copy. Guard it like every other mutation. */
-		if (usearch_reject_if_read_only(intern) == FAILURE) {
+		if (usearch_reject_if_immutable(intern) == FAILURE) {
 			return;
 		}
 		if (th < 0) {
@@ -910,7 +1051,7 @@ PHP_METHOD(Usearch_Index, threadsSearch)
 	if (!th_is_null) {
 		/* Same rationale as threadsAdd: a raised search budget reallocates the
 		 * node buffers and silently detaches a memory-mapped view. */
-		if (usearch_reject_if_read_only(intern) == FAILURE) {
+		if (usearch_reject_if_immutable(intern) == FAILURE) {
 			return;
 		}
 		if (th < 0) {
@@ -939,7 +1080,7 @@ PHP_METHOD(Usearch_Index, changeMetric)
 	if (handle == NULL) {
 		return;
 	}
-	if (usearch_reject_if_read_only(intern) == FAILURE) {
+	if (usearch_reject_if_immutable(intern) == FAILURE) {
 		return;
 	}
 
@@ -1221,6 +1362,7 @@ static const zend_function_entry class_Usearch_Index_methods[] = {
 	ZEND_ME(Usearch_Index, __construct, arginfo_class_Usearch_Index___construct, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, add, arginfo_class_Usearch_Index_add, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, search, arginfo_class_Usearch_Index_search, ZEND_ACC_PUBLIC)
+	ZEND_ME(Usearch_Index, filteredSearch, arginfo_class_Usearch_Index_filteredSearch, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, get, arginfo_class_Usearch_Index_get, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, contains, arginfo_class_Usearch_Index_contains, ZEND_ACC_PUBLIC)
 	ZEND_ME(Usearch_Index, count, arginfo_class_Usearch_Index_count, ZEND_ACC_PUBLIC)

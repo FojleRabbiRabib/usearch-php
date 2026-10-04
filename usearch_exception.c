@@ -29,8 +29,11 @@ zend_result usearch_check_error(usearch_error_t *error)
 	return SUCCESS;
 }
 
-zend_result usearch_reject_if_read_only(usearch_index_object *intern)
+zend_result usearch_reject_if_immutable(usearch_index_object *intern)
 {
+	if (intern->searching) {
+		return usearch_throw("cannot mutate the index while a filteredSearch() callback is running");
+	}
 	if (intern->read_only) {
 		return usearch_throw("cannot modify a memory-mapped read-only index view");
 	}

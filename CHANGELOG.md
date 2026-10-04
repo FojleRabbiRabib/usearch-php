@@ -11,6 +11,9 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 ### Added
 - In-memory buffer variants of the persistence surface: `saveBuffer(): string`, `loadBuffer()`,
   `viewBuffer()` (read-only, retains its payload), and `static metadataBuffer()`.
+- `filteredSearch(array|string $query, callable $filter, int $count = 10): array` — predicate-
+  filtered nearest-neighbour search; a throw inside the predicate aborts cleanly, and mutating the
+  index from inside the predicate is rejected.
 
 ### Changed
 - The `phpinfo()`/`php --ri usearch` section now reports the upstream USearch pin, thread safety

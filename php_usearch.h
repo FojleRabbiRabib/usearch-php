@@ -47,6 +47,7 @@ extern zend_class_entry *usearch_ce_scalar;
 typedef struct _usearch_index_object {
 	void *handle;
 	bool read_only;
+	bool searching;
 	zend_long metric_kind;
 	zend_long scalar_kind;
 	zend_long threads_add;
