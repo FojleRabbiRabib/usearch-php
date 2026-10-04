@@ -8,6 +8,8 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 
 ## [Unreleased]
 
+## 0.2.0 - 2026-10-04
+
 ### Added
 - In-memory buffer variants of the persistence surface: `saveBuffer(): string`, `loadBuffer()`,
   `viewBuffer()` (read-only, retains its payload), and `static metadataBuffer()`.

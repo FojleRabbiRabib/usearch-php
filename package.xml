@@ -18,11 +18,11 @@ index persistence, and runtime SIMD dispatch (AVX-512, AVX2, NEON, SVE).</descri
   <email>36526962+FojleRabbiRabib@users.noreply.github.com</email>
   <active>yes</active>
  </lead>
- <date>2026-10-03</date>
+ <date>2026-10-04</date>
  <time>12:00:00</time>
  <version>
-  <release>0.1.0</release>
-  <api>0.1.0</api>
+  <release>0.2.0</release>
+  <api>0.2.0</api>
  </version>
  <stability>
   <release>devel</release>
@@ -30,13 +30,11 @@ index persistence, and runtime SIMD dispatch (AVX-512, AVX2, NEON, SVE).</descri
  </stability>
  <license uri="https://www.apache.org/licenses/LICENSE-2.0">Apache-2.0</license>
  <notes>
-Initial release of usearch-php:
-- In-process HNSW vector similarity search on USearch 2.26.2
-- Full core API: construct, add, search, get, contains, count, remove, rename, clear, reserve
-- File persistence via save, load, and read-only mmap view
-- Usearch\Metric and Usearch\Scalar int-backed enums
-- Runtime SIMD dispatch preservation
-- Multi-ABI PHP 8.3, 8.4, 8.5 support
+0.2.0 — the complete upstream surface:
+- All 40 USearch C API symbols bound: in-memory buffer persistence (saveBuffer, loadBuffer,
+  viewBuffer, metadataBuffer), predicate-filtered search with a PHP callback, custom distance
+  metrics via changeMetric(callable), exact brute-force search, and runtime version fidelity
+- see CHANGELOG.md for the full list
  </notes>
  <contents>
   <dir name="/">

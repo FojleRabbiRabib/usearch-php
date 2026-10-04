@@ -13,7 +13,7 @@ extern zend_module_entry usearch_module_entry;
 #define phpext_usearch_ptr &usearch_module_entry
 
 /* Packaging version: plain semver, valid in package.xml and version_compare. */
-#define PHP_USEARCH_VERSION "0.1.0"
+#define PHP_USEARCH_VERSION "0.2.0"
 #define PHP_USEARCH_EXTNAME "usearch"
 
 /* The vendored upstream pin, surfaced by Usearch\Index::version(). */
