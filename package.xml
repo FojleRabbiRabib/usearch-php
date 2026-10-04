@@ -105,6 +105,7 @@ Initial release of usearch-php:
    <file role="test" name="tests/phpt/015-filtered-search.phpt"/>
    <file role="test" name="tests/phpt/016-custom-metric.phpt"/>
    <file role="test" name="tests/phpt/017-exact-search.phpt"/>
+   <file role="test" name="tests/phpt/018-version-reporting.phpt"/>
   </dir>
  </contents>
  <dependencies>

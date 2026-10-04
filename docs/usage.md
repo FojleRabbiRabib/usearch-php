@@ -272,7 +272,9 @@ The in-memory twin of `metadata()`: reads the option set from a `saveBuffer()` p
 loading it.
 
 ### `static version(): string`
-Extension version plus the vendored USearch pin, e.g. `0.1.0+usearch.2.26.2`.
+Extension version plus the vendored USearch pin **as the linked build reports it**, e.g.
+`0.1.0+usearch.2.26.2`. The value comes from the compiled-in core at runtime, not a constant, so
+a rebuild against a different pin cannot silently claim the old one.
 
 ### `static hardwareAccelerationCompiled(): string` / `hardwareAccelerationAvailable(): string`
 The SIMD instruction set this build targets, and the best one this host can execute.

@@ -261,7 +261,7 @@ namespace Usearch
         {
         }
 
-        /** The extension version plus the vendored USearch pin. */
+        /** The extension version plus the vendored USearch pin as the linked build reports it. */
         public static function version(): string
         {
         }

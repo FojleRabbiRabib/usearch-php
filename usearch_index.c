@@ -1623,8 +1623,16 @@ PHP_METHOD(Usearch_Index, metadataBuffer)
 
 PHP_METHOD(Usearch_Index, version)
 {
+	const char *upstream;
 	ZEND_PARSE_PARAMETERS_NONE();
-	RETURN_STRING(PHP_USEARCH_VERSION "+usearch." PHP_USEARCH_VENDORED);
+
+	/* The linked build's own report is the only honest answer to "which
+	 * writer produced this binary": a compile-time constant would keep
+	 * claiming the old pin after a rebuild against a newer tarball. The
+	 * constant remains the fallback if the core somehow reports nothing. */
+	upstream = usearch_version();
+	RETURN_STR(strpprintf(0, "%s+usearch.%s", PHP_USEARCH_VERSION,
+						  upstream != NULL ? upstream : PHP_USEARCH_VENDORED));
 }
 
 PHP_METHOD(Usearch_Index, hardwareAccelerationCompiled)

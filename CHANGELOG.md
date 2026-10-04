@@ -24,6 +24,9 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 ### Changed
 - The `phpinfo()`/`php --ri usearch` section now reports the upstream USearch pin, thread safety
   (ZTS/NTS), the shipped feature set, and author credit alongside the version and SIMD dispatch.
+- `Index::version()` now reports the USearch version the linked build itself declares, instead of a
+  compile-time constant — a rebuild against a different pin can no longer silently claim the old
+  one.
 
 ### Fixed
 - Documentation: the prebuilt-install example pointed at a wrong asset name, and the stated glibc
