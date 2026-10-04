@@ -265,7 +265,8 @@ check('Pearson (collinear)', Metric::Pearson, $sameA, $sameB, refPearson(...));
 check('Pearson (unrelated)', Metric::Pearson, $sameA, $unrelated, refPearson(...));
 
 /* Haversine ignores the index's `dimensions` (upstream reports 0), so it is
- * constructed without one — the path R1-09 fixed. */
+ * constructed without one; the marshalling layer resolves the implicit
+ * width itself. */
 $geoA = [10.0, 20.0];
 $geoB = [-30.0, 45.0];
 check(
