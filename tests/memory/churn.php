@@ -137,8 +137,8 @@ for ($i = 0; $i < ITERATIONS; $i++) {
     } catch (\RuntimeException $e) {
     }
     try {
-        $idx->filteredSearch($query, function (int $key) use ($idx): bool {
-            $idx->add(PHP_INT_MAX - $key, [0.0, 0.0, 0.0]);
+        $idx->filteredSearch($query, function (int $key) use ($idx, $query): bool {
+            $idx->add(PHP_INT_MAX - $key, $query);
             return true;
         }, 3);
     } catch (\Usearch\Exception $e) {
@@ -151,25 +151,25 @@ for ($i = 0; $i < ITERATIONS; $i++) {
     /* Custom metric: install, measure, throw from the callback, re-enter,
      * and switch back. Each path must free the trampoline strings and the
      * state, and leaving the callable installed until teardown must not
-     * leak the state either. */
+     * leak the state either. Vectors match the index's 8 dimensions. */
     $idx->changeMetric(function (string $a, string $b): float {
         return 0.5;
     });
-    $idx->distance([1.0, 2.0], [3.0, 4.0]);
+    $idx->distance($query, $query);
     $idx->search($query, 2);
     try {
         $idx->changeMetric(function (string $a, string $b): float {
             throw new \RuntimeException('churn');
         });
-        $idx->distance([1.0, 2.0], [3.0, 4.0]);
+        $idx->distance($query, $query);
     } catch (\RuntimeException $e) {
     }
     try {
-        $idx->changeMetric(function (string $a, string $b) use ($idx): float {
-            $idx->add(42, [0.0, 0.0, 0.0]);
+        $idx->changeMetric(function (string $a, string $b) use ($idx, $query): float {
+            $idx->add(42, $query);
             return 0.5;
         });
-        $idx->distance([1.0, 2.0], [3.0, 4.0]);
+        $idx->distance($query, $query);
     } catch (\Usearch\Exception $e) {
     }
     $idx->changeMetric(\Usearch\Metric::L2sq);
