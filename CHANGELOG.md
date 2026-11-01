@@ -8,6 +8,17 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 
 ## [Unreleased]
 
+### Added
+- Benchmark regression ratchet: `tools/benchmark.php ratchet` measures a fixed deterministic
+  suite (build/search at two shapes, F16- and I8-quantized search, `view()` and `load()` query
+  paths) and gates it against the committed baseline `tests/quality/benchmark-baseline.json`,
+  failing past per-metric bands (20% query latency, 25% build rate, 2% memory and footprint)
+  and on host-class mismatches; `--record` re-baselines after deliberate improvements.
+
+### Changed
+- The benchmark drivers (`tools/benchmark.php`, `tools/benchmark-compare.php`) are tracked in
+  the repository as development tooling; they remain outside the PECL package manifest.
+
 ## 0.2.0 - 2026-10-04
 
 ### Added

@@ -62,12 +62,14 @@ php tools/test-phpt.php
 php -n -d extension=modules/usearch.so tests/quality/metrics.php
 valgrind --leak-check=full --error-exitcode=1 php -n -d extension=modules/usearch.so tests/memory/churn.php
 ./tools/fetch-dataset.sh && php -n -d extension=modules/usearch.so tests/quality/recall.php
+php -n -d extension=modules/usearch.so tools/benchmark.php ratchet
 clang-format-14 --dry-run --Werror usearch.c usearch_index.c usearch_vector.c usearch_enums.c usearch_exception.c usearch_bridge.cpp php_usearch.h usearch_internal.h usearch_bridge.h
 vendor/bin/phpcs && vendor/bin/phpstan analyse --no-progress
 ```
 
 Plus the ELF assertions: RELRO, BIND_NOW, non-executable stack, no RPATH, and only `get_module`
-exported (asserted by `tools/build.sh` and `tools/gate-symbols.sh`). The recall gate needs the
+exported (asserted by `tools/build.sh` and `tools/gate-symbols.sh`). The ratchet gate is machine-local
+(different hardware is a `--record`, never a cross-machine comparison). The recall gate needs the
 Fashion-MNIST dataset, which `tools/fetch-dataset.sh` fetches and SHA-256-verifies into the
 gitignored `vendor-data/`; it is never committed.
 
