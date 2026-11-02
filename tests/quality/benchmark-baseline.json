@@ -1,0 +1,36 @@
+{
+    "format": 1,
+    "recorded": "2026-11-01T13:12:52+00:00",
+    "host": {
+        "php": "8.3",
+        "arch": "x86_64",
+        "isa": "serial, haswell, skylake, icelake"
+    },
+    "cases": {
+        "build-search-5000-128": {
+            "add_per_vector_us": 144.71,
+            "query_us": 56.2,
+            "memory_bytes": 16818688
+        },
+        "build-search-2000-768": {
+            "add_per_vector_us": 336.19,
+            "query_us": 174.77,
+            "memory_bytes": 16794688
+        },
+        "quantize-f16-5000-768": {
+            "query_us": 128.75,
+            "serialized_bytes_per_vector": 1684.5
+        },
+        "quantize-i8-5000-768": {
+            "query_us": 78.39,
+            "serialized_bytes_per_vector": 916.5
+        },
+        "view-20000-128": {
+            "query_us": 78.66
+        },
+        "load-20000-128": {
+            "query_us": 78.93,
+            "memory_bytes": 33715904
+        }
+    }
+}

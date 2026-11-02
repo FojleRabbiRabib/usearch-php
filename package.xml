@@ -73,6 +73,7 @@ index persistence, and runtime SIMD dispatch (AVX-512, AVX2, NEON, SVE).</descri
    <file role="data" name=".github/SECURITY.md"/>
    <file role="data" name=".github/ISSUE_TEMPLATE/bug_report.yml"/>
    <file role="data" name=".github/ISSUE_TEMPLATE/feature_request.yml"/>
+   <file role="data" name=".github/pull_request_template.md"/>
    <file role="doc" name="README.md"/>
    <file role="doc" name="CHANGELOG.md"/>
    <file role="doc" name="CLAUDE.md"/>
