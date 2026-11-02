@@ -53,12 +53,11 @@ function rss(): array
     if ($status === false) {
         return $out;
     }
-    foreach (explode("\n", $status) as $line) {
-        if (str_starts_with($line, 'VmRSS:')) {
-            $out['rss'] = (int) filter_var($line, FILTER_SANITIZE_NUMBER_INT) * 1024;
-        } elseif (str_starts_with($line, 'VmHWM:')) {
-            $out['peak'] = (int) filter_var($line, FILTER_SANITIZE_NUMBER_INT) * 1024;
-        }
+    if (preg_match('/^VmRSS:\s+(\d+)\s+kB$/m', $status, $matches) === 1) {
+        $out['rss'] = (int) $matches[1] * 1024;
+    }
+    if (preg_match('/^VmHWM:\s+(\d+)\s+kB$/m', $status, $matches) === 1) {
+        $out['peak'] = (int) $matches[1] * 1024;
     }
     return $out;
 }
@@ -74,7 +73,8 @@ function makeVectors(int $count, int $dim): array
     for ($i = 0; $i < $count; $i++) {
         $v = [];
         for ($d = 0; $d < $dim; $d++) {
-            $v[] = (sin($i * 12.9898 + $d * 78.233) * 43758.5453) - floor(sin($i * 12.9898 + $d * 78.233) * 43758.5453);
+            $val = (sin($i * 12.9898 + $d * 78.233) * 43758.5453);
+            $v[] = $val - floor($val);
         }
         $vectors[] = $v;
     }
@@ -139,9 +139,9 @@ function ratchetHost(): array
 }
 
 /**
- * Per-query latency in microseconds over a warmed index: best of three timed
+ * Per-query latency in microseconds over a warmed index: best of five timed
  * passes, because a single pass on a shared host occasionally catches a
- * scheduler hiccup that would read as a regression.
+ * scheduler hiccup or power scaling ramp that would read as a regression.
  *
  * @param list<float> $query
  */
@@ -151,7 +151,7 @@ function timedQueries(Index $idx, array $query, int $reps): float
         $idx->search($query, 10);
     }
     $best = INF;
-    for ($pass = 0; $pass < 3; $pass++) {
+    for ($pass = 0; $pass < 5; $pass++) {
         $t0 = microtime(true);
         for ($r = 0; $r < $reps; $r++) {
             $idx->search($query, 10);
@@ -405,14 +405,7 @@ foreach ($cases as [$n, $d]) {
      * build figure would measure PHP's sin() throughput, not the extension's
      * insert path — the two are three orders of magnitude apart. */
     $tg0 = microtime(true);
-    $vectors = [];
-    for ($k = 0; $k < $n; $k++) {
-        $v = [];
-        for ($j = 0; $j < $d; $j++) {
-            $v[] = (sin($k * 12.9898 + $j * 78.233) * 43758.5453) - floor(sin($k * 12.9898 + $j * 78.233) * 43758.5453);
-        }
-        $vectors[] = $v;
-    }
+    $vectors = makeVectors($n, $d);
     $tg1 = microtime(true);
     $genSec = $tg1 - $tg0;
 

@@ -323,7 +323,7 @@ function writeManifest(string $path, array $case, int $size, array $queries): vo
 // -----------------------------------------------------------------------------
 
 $tempDir = sys_get_temp_dir() . '/usearch-interop-' . getmypid();
-if (!is_dir($tempDir) && !mkdir($tempDir, 0777, true)) {
+if (!is_dir($tempDir) && !mkdir($tempDir, 0700, true)) {
     fwrite(STDERR, "FAIL: cannot create temporary directory {$tempDir}\n");
     exit(1);
 }

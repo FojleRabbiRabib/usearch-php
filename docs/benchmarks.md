@@ -79,13 +79,13 @@ metric against the committed baseline `tests/quality/benchmark-baseline.json`:
 
 | Metric | Fails beyond | Measures |
 |---|---|---|
-| `query_us` | +20% | per-query latency (best of three passes) |
+| `query_us` | +20% | per-query latency (best of five passes) |
 | `add_per_vector_us` | +25% | HNSW build rate |
 | `memory_bytes` | +2% | `memoryUsage()` — graph plus reserved tapes; exact for a fixed corpus |
 | `serialized_bytes_per_vector` | +2% | quantized footprint (F16 1,684 vs I8 917 B/vector at 768-dim) |
 
-Timings take the best of three passes: a single pass on a shared host occasionally catches
-a scheduler hiccup, which is noise, not a regression. The quantize cases ratchet through
+Timings take the best of five passes: a single pass on a shared host occasionally catches
+a scheduler hiccup or governor scaling ramp, which is noise, not a regression. The quantize cases ratchet through
 the serialized size rather than `memoryUsage()` because reserved tape allocator chunks
 dominate `memoryUsage()` at this scale and cannot separate scalar kinds — a broken
 scalar-kind mapping shows up as a hard footprint regression instead. Exit `1` on any
