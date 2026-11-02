@@ -9,6 +9,11 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 ## [Unreleased]
 
 ### Added
+- Cross-language index-file interoperability gate: `tests/quality/interop.php` and its C++
+  reference helper `tests/quality/interop_cpp.cpp` verify bidirectional binary serialization
+  and search fidelity across 9 configurations (Cosine F32/F16/I8, L2sq F32, Ip F32, Hamming B1,
+  Haversine F32, tombstones/deletions, empty index) and in-memory buffer variants
+  (`saveBuffer`/`loadBuffer`/`viewBuffer`/`metadataBuffer`) against upstream USearch (C++ and Python).
 - Benchmark regression ratchet: `tools/benchmark.php ratchet` measures a fixed deterministic
   suite (build/search at two shapes, F16- and I8-quantized search, `view()` and `load()` query
   paths) and gates it against the committed baseline `tests/quality/benchmark-baseline.json`,
