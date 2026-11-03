@@ -21,6 +21,14 @@ release notes. 0.1.0 vendored USearch 2.26.2.
   and on host-class mismatches; `--record` re-baselines after deliberate improvements.
 
 ### Changed
+- The C++ runtime (libstdc++ and libgcc) is linked into the module on ELF platforms where the
+  static archives exist, so the module depends on the C library only and carries no
+  `GLIBCXX`/`CXXABI` version floor; `tools/gate-linkage.sh` asserts it, and `MSHUTDOWN` releases
+  the runtime's one-time exception pool so the memory gate stays leak-free.
+- Prebuilt glibc Linux binaries (PIE archives and bare `.so`) are built in an AlmaLinux 8 image
+  (`tools/build-el8.sh`, glibc 2.28, digest-pinned base image, gcc-toolset 14 and Remi PHP)
+  instead of on the CI runner, lowering the glibc floor from 2.34 to 2.28. The same build also
+  runs the leak, recall and interop gates on the exact bytes that ship.
 - The benchmark drivers (`tools/benchmark.php`, `tools/benchmark-compare.php`) are tracked in
   the repository as development tooling; they remain outside the PECL package manifest.
 

@@ -13,6 +13,11 @@
  * Usage: php -n -d extension=modules/usearch.so tools/benchmark.php [suite]
  *   suite: quick (default) | full | ratchet
  *
+ * `parity` (php tools/benchmark.php parity <reference.so> <candidate.so> [rounds])
+ * runs the ratchet suite for two builds of the same source in alternating child
+ * processes and fails when the candidate leaves the ratchet bands relative to the
+ * reference; it needs no loaded extension and never reads the baseline.
+ *
  * `ratchet` measures a fixed deterministic suite and compares it against the
  * committed baseline in tests/quality/benchmark-baseline.json: exit 1 on any
  * regression past its band, exit 2 when the baseline is missing, malformed, or
@@ -366,14 +371,205 @@ function runRatchet(bool $record): int
     return 0;
 }
 
+/**
+ * Measure one ratchet case and print the result as JSON. The parity driver runs
+ * this in a child process per module and case, so each module is loaded alone and
+ * the two builds are measured seconds apart rather than minutes apart.
+ */
+function runMeasure(string $case): int
+{
+    if (!in_array($case, RATCHET_CASES, true)) {
+        fwrite(STDERR, "FAIL: unknown ratchet case {$case}\n");
+        return 2;
+    }
+    $cases = [$case => ratchetCase($case)];
+    @unlink(ratchetViewFile());
+    echo json_encode([
+        'host' => ratchetHost() + ['compiled' => Index::hardwareAccelerationCompiled()],
+        'cases' => $cases,
+    ], JSON_THROW_ON_ERROR) . "\n";
+    return 0;
+}
+
+/**
+ * Measure one case in a child process that loads only the given module.
+ *
+ * @return array{host: array<string, string>, cases: array<string, array<string, float>>}
+ */
+function measureModule(string $module, string $case): array
+{
+    // The child's stderr goes to a file, so a chatty child can never fill a pipe while
+    // this process is still draining stdout.
+    $errFile = tempnam(sys_get_temp_dir(), 'usearch-measure-');
+    if ($errFile === false) {
+        fwrite(STDERR, "FAIL: cannot create a temporary file\n");
+        exit(2);
+    }
+    $process = proc_open(
+        [PHP_BINARY, '-n', '-d', 'extension=' . $module, __FILE__, 'measure', $case],
+        [1 => ['pipe', 'w'], 2 => ['file', $errFile, 'w']],
+        $pipes,
+    );
+    if (!is_resource($process)) {
+        unlink($errFile);
+        fwrite(STDERR, "FAIL: cannot start a child PHP for {$module}\n");
+        exit(2);
+    }
+    $out = (string) stream_get_contents($pipes[1]);
+    fclose($pipes[1]);
+    $status = proc_close($process);
+    $err = (string) file_get_contents($errFile);
+    unlink($errFile);
+    if ($status !== 0) {
+        fwrite(STDERR, "FAIL: measuring {$module} failed:\n{$err}");
+        exit(2);
+    }
+    try {
+        /** @var array{host: array<string, string>, cases: array<string, array<string, float>>} */
+        return json_decode($out, true, 16, JSON_THROW_ON_ERROR);
+    } catch (JsonException $e) {
+        fwrite(STDERR, "FAIL: {$module} produced unreadable measurements: {$e->getMessage()}\n{$out}{$err}");
+        exit(2);
+    }
+}
+
+/**
+ * Tiers of a comma-separated ISA list that the reference build was compiled with.
+ *
+ * @param list<string> $reference
+ * @return list<string>
+ */
+function tiersWithin(string $list, array $reference): array
+{
+    return array_values(array_filter(
+        array_map('trim', explode(',', $list)),
+        static fn (string $tier): bool => in_array($tier, $reference, true),
+    ));
+}
+
+/**
+ * Paired speed-parity gate: a reference build and a candidate build of the same
+ * source run the ratchet suite in alternating child processes on this machine,
+ * the best of the rounds per metric is kept for each, and the candidate must stay
+ * inside the ratchet bands relative to the reference. Never compares against the
+ * committed baseline, which is machine-local. Exit 0 pass, 1 regression, 2 when
+ * the two builds are not comparable (different PHP, arch, or CPU-visible tiers).
+ */
+function runParity(string $reference, string $candidate, int $rounds): int
+{
+    foreach ([$reference, $candidate] as $module) {
+        if (!is_file($module)) {
+            fwrite(STDERR, "FAIL: module {$module} not found\n");
+            return 2;
+        }
+    }
+    if (realpath($reference) === realpath($candidate)) {
+        fwrite(STDERR, "FAIL: reference and candidate are the same file; nothing to compare\n");
+        return 2;
+    }
+    if ($rounds < 1 || $rounds > 9) {
+        fwrite(STDERR, "FAIL: rounds must be 1..9\n");
+        return 2;
+    }
+
+    /** @var array{reference: array<string, array<string, float>>, candidate: array<string, array<string, float>>} $best */
+    $best = ['reference' => [], 'candidate' => []];
+    $hosts = [];
+    for ($round = 1; $round <= $rounds; $round++) {
+        foreach (RATCHET_CASES as $index => $name) {
+            $order = ($round + $index) % 2 === 0 ? ['reference', 'candidate'] : ['candidate', 'reference'];
+            foreach ($order as $side) {
+                $run = measureModule($side === 'reference' ? $reference : $candidate, $name);
+                if (isset($hosts[$side]) && $hosts[$side] !== $run['host']) {
+                    fwrite(STDERR, "FAIL: the {$side} build reported a different host between runs; not comparable\n");
+                    return 2;
+                }
+                $hosts[$side] = $run['host'];
+                foreach ($run['cases'][$name] as $metric => $value) {
+                    $best[$side][$name][$metric] = min($best[$side][$name][$metric] ?? INF, $value);
+                }
+            }
+        }
+        printf("round %d/%d done\n", $round, $rounds);
+    }
+
+    if (!isset($hosts['reference'], $hosts['candidate'])) {
+        fwrite(STDERR, "FAIL: no measurements were taken\n");
+        return 2;
+    }
+    foreach (['php', 'arch'] as $key) {
+        if ($hosts['reference'][$key] !== $hosts['candidate'][$key]) {
+            fwrite(STDERR, "FAIL: builds differ in {$key}; not comparable\n");
+            return 2;
+        }
+    }
+    $referenceTiers = array_map('trim', explode(',', $hosts['reference']['compiled']));
+    $missing = array_diff($referenceTiers, array_map('trim', explode(',', $hosts['candidate']['compiled'])));
+    if ($missing !== []) {
+        fwrite(STDERR, 'FAIL: candidate lacks compiled tiers: ' . implode(', ', $missing) . "\n");
+        return 2;
+    }
+    $referenceIsa = tiersWithin($hosts['reference']['isa'], $referenceTiers);
+    $candidateIsa = tiersWithin($hosts['candidate']['isa'], $referenceTiers);
+    if ($referenceIsa !== $candidateIsa) {
+        fwrite(STDERR, sprintf(
+            "FAIL: usable tiers differ (reference %s, candidate %s)\n",
+            implode(',', $referenceIsa),
+            implode(',', $candidateIsa),
+        ));
+        return 2;
+    }
+
+    hline('PARITY: candidate vs reference, best of ' . $rounds);
+    printf(
+        "reference tiers: %s\ncandidate tiers: %s\n",
+        $hosts['reference']['compiled'],
+        $hosts['candidate']['compiled'],
+    );
+    printf("%-24s %-18s %11s %11s %5s  %s\n", 'case', 'metric', 'reference', 'candidate', 'band', 'verdict');
+    echo str_repeat('-', 84) . "\n";
+    $regressions = 0;
+    foreach (RATCHET_CASES as $name) {
+        foreach ($best['reference'][$name] as $metric => $base) {
+            $value = $best['candidate'][$name][$metric] ?? null;
+            $band = RATCHET_BANDS[$metric] ?? null;
+            if ($value === null || $band === null) {
+                fwrite(STDERR, "FAIL: metric {$metric} of {$name} is missing from the candidate or has no band\n");
+                return 2;
+            }
+            $verdict = $value > $base * $band ? 'REGRESSION' : 'ok';
+            $regressions += $verdict === 'ok' ? 0 : 1;
+            printf("%-24s %-18s %11.2f %11.2f %5.2f  %s\n", $name, $metric, $base, $value, $band, $verdict);
+        }
+    }
+    if ($regressions > 0) {
+        printf("\nPARITY FAILED: %d regression(s)\n", $regressions);
+        return 1;
+    }
+    printf("\nPARITY PASSED: %d case(s), 0 regressions\n", count(RATCHET_CASES));
+    return 0;
+}
+
 $suite = $argv[1] ?? 'quick';
-if (!in_array($suite, ['quick', 'full', 'ratchet'], true)) {
-    fwrite(STDERR, "FAIL: unknown suite '{$suite}' (quick | full | ratchet)\n");
+if (!in_array($suite, ['quick', 'full', 'ratchet', 'measure', 'parity'], true)) {
+    fwrite(STDERR, "FAIL: unknown suite '{$suite}' (quick | full | ratchet | measure | parity)\n");
     exit(2);
 }
 
 if ($suite === 'ratchet') {
     exit(runRatchet(in_array('--record', $argv, true)));
+}
+
+if ($suite === 'measure') {
+    exit(runMeasure($argv[2] ?? ''));
+}
+
+if ($suite === 'parity') {
+    if (!isset($argv[2], $argv[3])) {
+        fwrite(STDERR, "usage: php tools/benchmark.php parity <reference.so> <candidate.so> [rounds]\n");
+        exit(2);
+    }
+    exit(runParity($argv[2], $argv[3], (int) ($argv[4] ?? 3)));
 }
 
 hline('usearch-php benchmark');

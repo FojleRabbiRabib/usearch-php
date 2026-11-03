@@ -79,6 +79,7 @@ echo "extension=usearch.so" | sudo tee /etc/php/8.3/mods-available/usearch.ini
 
 ## 4. Minimum glibc floor
 
-Prebuilt Linux binaries require **glibc 2.34 or newer** (Ubuntu 22.04+, Debian 12+, RHEL 9+; the
-provenance record shipped with every release names the exact symbol floor). Older systems should
-build from source.
+Prebuilt glibc Linux binaries are built on AlmaLinux 8 and require **glibc 2.28 or newer**
+(Ubuntu 20.04+, Debian 10+, RHEL and derivatives 8+; the provenance record shipped with every
+release names the exact symbol floor). They link the C++ runtime statically and depend on the C
+library only. Older systems should build from source.

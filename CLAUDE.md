@@ -33,6 +33,8 @@ is reproducible from the pins in `tools/fetch-usearch.sh`.
 | `usearch.c` | Module entry |
 | `usearch.stub.php` | Public surface; `usearch_arginfo.h` is generated from it |
 | `tools/` | Fetch, build, test, and gate drivers |
+| `tools/el8/`, `tools/build-el8.sh` | AlmaLinux 8 build image and its driver: the glibc release binaries are built and gated here |
+| `tools/gate-linkage.sh` | Asserts C-library-only `NEEDED` entries, no `GLIBCXX`/`CXXABI` references, and the glibc ceiling |
 | `tests/phpt/` | Behavioural suite |
 | `tests/memory/churn.php` | Valgrind leak-gate driver |
 | `tests/quality/recall.php` | recall@10 gate over Fashion-MNIST |
@@ -74,6 +76,18 @@ exported (asserted by `tools/build.sh` and `tools/gate-symbols.sh`). The ratchet
 (different hardware is a `--record`, never a cross-machine comparison). The recall gate needs the
 Fashion-MNIST dataset, which `tools/fetch-dataset.sh` fetches and SHA-256-verifies into the
 gitignored `vendor-data/`; it is never committed.
+
+The release binary for glibc Linux is built by `tools/build-el8.sh <php-version> [out-dir]` (default
+`dist/el8`; `make clean` deletes every `*.so` under the tree, so package the artifacts before a local
+`tools/build.sh`): the image runs the build, the linkage
+gate with a glibc 2.28 ceiling, and the phpt, metric, leak, recall and interop gates on the exact bytes
+that ship. The C++ runtime is linked statically through the `.usearch-rt/` shim that `config.m4`
+generates (adopted only after a link probe; without static `libstdc++` archives a plain
+`./configure` falls back to the dynamic runtime with a warning, but `tools/build.sh` then fails its
+linkage gate, so install `libstdc++-static` or the distro equivalent for repository builds). Speed parity between two builds on one machine is judged by
+`php -n tools/benchmark.php parity <reference.so> <candidate.so> [rounds]` (per-case, alternating
+child processes; exit 0 pass, 1 regression, 2 not comparable), never by the whole-suite ratchet across
+different binaries.
 
 ## Licence and attribution
 
