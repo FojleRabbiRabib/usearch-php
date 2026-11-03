@@ -34,6 +34,9 @@ is reproducible from the pins in `tools/fetch-usearch.sh`.
 | `usearch.stub.php` | Public surface; `usearch_arginfo.h` is generated from it |
 | `tools/` | Fetch, build, test, and gate drivers |
 | `tools/el8/`, `tools/build-el8.sh` | AlmaLinux 8 build image and its driver: the glibc release binaries are built and gated here |
+| `tools/build-deb.sh`, `tools/deb/` | Wraps the EL8-built module in `php<N>-usearch` (never rebuilds it), lints it, and proves a second assembly is byte-identical |
+| `tools/test-deb.sh` | Installs the deb in a clean Debian/Ubuntu container and runs the lifecycle (install, upgrade, `phpdismod`, remove, reinstall, purge); `EXPECT_REFUSE=1` asserts a wrong-PHP package is refused |
+| `tools/gate-hardening.sh` | RELRO, BIND_NOW, non-executable stack, no RPATH; rerun on the stripped module |
 | `tools/gate-linkage.sh` | Asserts C-library-only `NEEDED` entries, no `GLIBCXX`/`CXXABI` references, and the glibc ceiling |
 | `tests/phpt/` | Behavioural suite |
 | `tests/memory/churn.php` | Valgrind leak-gate driver |
