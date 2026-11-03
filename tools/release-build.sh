@@ -17,7 +17,9 @@
 #      RELEASE_TAG (optional, e.g. v0.1.0 — PIE resolves packages by the full
 #      tag version, so archives are additionally published under that name),
 #      SKIP_GATES (set to 1 to skip the per-ABI gates; the CI musl container
-#      uses it only when the container PHP cannot run the full suite).
+#      uses it only when the container PHP cannot run the full suite),
+#      PREBUILT_DIR (glibc Linux only: package the modules that tools/build-el8.sh
+#      built and gated, instead of building from source; ARCH selects the file).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
@@ -57,6 +59,11 @@ elif ls /lib/ld-musl-*.so.* >/dev/null 2>&1; then
 	LIBC=musl
 else
 	LIBC=glibc
+fi
+
+if [ -n "${PREBUILT_DIR:-}" ] && { [ "$OS_SEG" != "linux" ] || [ "$LIBC" != "glibc" ]; }; then
+	echo "FAIL: PREBUILT_DIR applies to glibc Linux only (got $OS_SEG/$LIBC)" >&2
+	exit 2
 fi
 
 command -v zip >/dev/null 2>&1 || {
@@ -101,20 +108,43 @@ echo ">> Preparing release build for usearch-php v$EXT_VERSION ($ARCH, $LIBC, $T
 rm -rf "$OUT_DIR"
 
 for php_ver in "${ABIS[@]}"; do
-	echo "==> Building and gating PHP $php_ver"
-	"$ROOT/tools/build.sh" "$php_ver"
+	if [ -n "${PREBUILT_DIR:-}" ]; then
+		# The glibc module is built and gated in the EL8 image (tools/build-el8.sh);
+		# only the shipped bytes are re-asserted here.
+		SRC_SO="$PREBUILT_DIR/usearch-php${php_ver}-el8-${ARCH}.so"
+		if [ ! -f "$SRC_SO" ]; then
+			echo "FAIL: prebuilt module $SRC_SO not found" >&2
+			exit 1
+		fi
+		echo "==> Packaging prebuilt PHP $php_ver module"
+		"$ROOT/tools/gate-symbols.sh" "$SRC_SO"
+		"$ROOT/tools/gate-linkage.sh" "$SRC_SO" 2.28
+		if [ ! -s "${SRC_SO%.so}.phpapi" ]; then
+			echo "FAIL: ${SRC_SO%.so}.phpapi is missing or empty; rebuild with tools/build-el8.sh" >&2
+			exit 1
+		fi
+		PHP_API="$(cat "${SRC_SO%.so}.phpapi")"
+	else
+		echo "==> Building and gating PHP $php_ver"
+		"$ROOT/tools/build.sh" "$php_ver"
 
-	SRC_SO="$ROOT/modules/usearch.so"
-	if [ ! -f "$SRC_SO" ]; then
-		echo "FAIL: expected build output $SRC_SO not found" >&2
-		exit 1
-	fi
+		SRC_SO="$ROOT/modules/usearch.so"
+		if [ ! -f "$SRC_SO" ]; then
+			echo "FAIL: expected build output $SRC_SO not found" >&2
+			exit 1
+		fi
 
-	if [ "${SKIP_GATES:-0}" != "1" ]; then
-		PHP_BIN="php$php_ver"
-		command -v "$PHP_BIN" >/dev/null 2>&1 || PHP_BIN=php
-		"$ROOT/tools/test-phpt.php" "$PHP_BIN"
-		"$PHP_BIN" -n -d extension="$SRC_SO" "$ROOT/tests/quality/metrics.php"
+		if [ "${SKIP_GATES:-0}" != "1" ]; then
+			PHP_BIN="php$php_ver"
+			command -v "$PHP_BIN" >/dev/null 2>&1 || PHP_BIN=php
+			"$ROOT/tools/test-phpt.php" "$PHP_BIN"
+			"$PHP_BIN" -n -d extension="$SRC_SO" "$ROOT/tests/quality/metrics.php"
+		fi
+		PHP_CONFIG_BIN="php-config$php_ver"
+		command -v "$PHP_CONFIG_BIN" >/dev/null 2>&1 || PHP_CONFIG_BIN=php-config
+		PHP_INC="$("$PHP_CONFIG_BIN" --include-dir 2>/dev/null || echo "")"
+		PHP_API="$(awk '$1 == "#define" && $2 == "ZEND_MODULE_API_NO" { print $3; exit }' \
+			"$PHP_INC/Zend/zend_modules.h" 2>/dev/null || echo "unknown")"
 	fi
 
 	# phpize --clean during the build removed build/ wholesale; recreate the
@@ -167,11 +197,6 @@ for php_ver in "${ABIS[@]}"; do
 
 	# 3. Provenance record: what built this, against what, bound to which
 	# glibc floor — everything a bug report needs before the reporter speaks.
-	PHP_CONFIG_BIN="php-config$php_ver"
-	command -v "$PHP_CONFIG_BIN" >/dev/null 2>&1 || PHP_CONFIG_BIN=php-config
-	PHP_INC="$("$PHP_CONFIG_BIN" --include-dir 2>/dev/null || echo "")"
-	PHP_API="$(awk '$1 == "#define" && $2 == "ZEND_MODULE_API_NO" { print $3; exit }' \
-		"$PHP_INC/Zend/zend_modules.h" 2>/dev/null || echo "unknown")"
 	SO_SHA="$(calc_sha256 "$SRC_SO")"
 	GIT_REV="${GIT_REV:-$(git rev-parse HEAD 2>/dev/null || echo "unknown")}"
 	GLIBC_MAX="$(objdump -T "$SRC_SO" 2>/dev/null | grep -oE 'GLIBC_[0-9.]+' | sort -Vu | tail -1 || true)"
