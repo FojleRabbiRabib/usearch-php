@@ -29,6 +29,9 @@ release notes. 0.1.0 vendored USearch 2.26.2.
   (`tools/build-el8.sh`, glibc 2.28, digest-pinned base image, gcc-toolset 14 and Remi PHP)
   instead of on the CI runner, lowering the glibc floor from 2.34 to 2.28. The same build also
   runs the leak, recall and interop gates on the exact bytes that ship.
+- Prebuilt glibc binaries are stripped of debug information once, in the EL8 build, before the
+  gates run: the PIE zips and bare `.so` shrink, and crash backtraces from them show no symbol
+  names.
 - The benchmark drivers (`tools/benchmark.php`, `tools/benchmark-compare.php`) are tracked in
   the repository as development tooling; they remain outside the PECL package manifest.
 

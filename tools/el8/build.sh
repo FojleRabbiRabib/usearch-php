@@ -19,6 +19,14 @@ cd "$(dirname "$0")/../.."
 USEARCH_MAX_GLIBC=2.28 ./tools/build.sh "$PHP_VER"
 
 MODULE="$PWD/modules/usearch.so"
+
+# Strip once, here, so every artifact (PIE zip, bare .so, deb, rpm) carries these exact
+# bytes and every gate below runs on them. Distro packaging policy requires it.
+strip --strip-unneeded "$MODULE"
+./tools/gate-hardening.sh "$MODULE"
+./tools/gate-symbols.sh "$MODULE"
+./tools/gate-linkage.sh "$MODULE" 2.28
+
 tools/test-phpt.php php
 php -n -d extension="$MODULE" tests/quality/metrics.php
 valgrind --leak-check=full --error-exitcode=1 php -n -d extension="$MODULE" tests/memory/churn.php

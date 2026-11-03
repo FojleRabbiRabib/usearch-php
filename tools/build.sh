@@ -71,10 +71,7 @@ fi
 # 5. ELF hardening assertions (Linux only)
 if [ "$(uname -s)" = "Linux" ]; then
 	echo "Asserting ELF hardening..."
-	readelf -lW "$MODULE" | grep -q "GNU_RELRO" || { echo "FAIL: missing GNU_RELRO"; exit 1; }
-	readelf -lW "$MODULE" | grep -E "GNU_STACK.*RWE" && { echo "FAIL: stack is executable"; exit 1; } || true
-	readelf -dW "$MODULE" | grep -q "BIND_NOW" || { echo "FAIL: missing BIND_NOW"; exit 1; }
-	readelf -dW "$MODULE" | grep -E "RPATH|RUNPATH" && { echo "FAIL: carries RPATH/RUNPATH"; exit 1; } || true
+	"$ROOT/tools/gate-hardening.sh" "$MODULE"
 
 	# Symbol isolation
 	LEAKS="$(nm -D --defined-only "$MODULE" | grep -v ' get_module$' || true)"
