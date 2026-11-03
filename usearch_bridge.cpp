@@ -99,3 +99,21 @@ extern "C" int usearch_php_index_distance(usearch_index_t index, void const *a, 
 	*out = (double)dense->metric()((byte_t const *)a, (byte_t const *)b);
 	return 0;
 }
+
+#if defined(USEARCH_PHP_STATIC_CXX_RUNTIME)
+// libstdc++'s own hook for releasing its emergency exception pool; valgrind calls it the
+// same way. It is an internal, not a stable API, so config.m4 defines the macro only
+// after a link probe proves the archived runtime provides it. It runs from MSHUTDOWN,
+// after request shutdown has destroyed every Usearch\Index: no native object outlives it.
+namespace __gnu_cxx
+{
+void __freeres();
+}
+#endif
+
+extern "C" void usearch_php_runtime_release(void)
+{
+#if defined(USEARCH_PHP_STATIC_CXX_RUNTIME)
+	__gnu_cxx::__freeres();
+#endif
+}

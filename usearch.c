@@ -36,6 +36,16 @@ PHP_MINIT_FUNCTION(usearch)
 	return SUCCESS;
 }
 
+PHP_MSHUTDOWN_FUNCTION(usearch)
+{
+	(void)type;
+	(void)module_number;
+
+	usearch_php_runtime_release();
+
+	return SUCCESS;
+}
+
 PHP_MINFO_FUNCTION(usearch)
 {
 	(void)zend_module;
@@ -69,7 +79,7 @@ zend_module_entry usearch_module_entry = {
 	PHP_USEARCH_EXTNAME,
 	usearch_functions,
 	PHP_MINIT(usearch),
-	NULL,
+	PHP_MSHUTDOWN(usearch),
 	NULL,
 	NULL,
 	PHP_MINFO(usearch),

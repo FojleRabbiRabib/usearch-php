@@ -83,7 +83,8 @@ if [ "$(uname -s)" = "Linux" ]; then
 		echo "$LEAKS" >&2
 		exit 1
 	fi
-	echo "ELF hardening assertions: PASS (RELRO, BIND_NOW, noexecstack, symbol isolation)"
+	"$ROOT/tools/gate-linkage.sh" "$MODULE" "${USEARCH_MAX_GLIBC:-}"
+	echo "ELF hardening assertions: PASS (RELRO, BIND_NOW, noexecstack, symbol isolation, linkage)"
 fi
 
 echo "SUCCESS: usearch.so built for PHP $PHP_VER ($BUILD_TYPE)"

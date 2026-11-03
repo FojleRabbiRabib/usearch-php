@@ -109,6 +109,71 @@ if test "$PHP_USEARCH" != "no"; then
   dnl `$abs_srcdir/.`/ and ac_bdir `./`, which both resolve correctly.
   USEARCH_BRIDGE_FLAGS="-std=c++17 -Wall -Wextra -Werror -Wno-unused-parameter -Wno-maybe-uninitialized -Wno-unknown-pragmas"
 
+  dnl Link the GCC C++ runtime into the module where its static archives exist, so
+  dnl the module needs neither libstdc++ nor libgcc_s on the target host and carries
+  dnl no GLIBCXX/CXXABI version floor. libtool appends its own `-lstdc++ -lgcc_s`
+  dnl after the objects, which a -static-libstdc++ flag cannot override; -L applies
+  dnl to every -l on the line, so a search-path shim turns both names into the
+  dnl archives, and --exclude-libs keeps the archived symbols out of the export
+  dnl set. The shim is adopted only after a link probe proves the archived runtime
+  dnl provides the pool release the module calls. Where the archives are missing
+  dnl (EL needs libstdc++-static, clang uses libc++) configure falls back to the
+  dnl dynamic runtime with a warning; tools/build.sh runs tools/gate-linkage.sh, which
+  dnl fails such a build, so every build made by the repository tooling is static.
+  dnl Before glibc 2.34 the archived libstdc++ reaches pthreads only through weak
+  dnl references that stay unbound unless the host process loads libpthread, so the
+  dnl module names libpthread itself wherever that shared library exists.
+  USEARCH_RT_LIBADD=""
+  case "$host_os" in
+    darwin*) ;;
+    *)
+      usearch_a_stdcxx=`$CXX -print-file-name=libstdc++.a`
+      usearch_a_gcc=`$CXX -print-file-name=libgcc.a`
+      usearch_a_gcc_eh=`$CXX -print-file-name=libgcc_eh.a`
+      usearch_so_pthread=`$CXX -print-file-name=libpthread.so`
+      AC_MSG_CHECKING([for the static C++ runtime archives])
+      case "$usearch_a_stdcxx:$usearch_a_gcc:$usearch_a_gcc_eh" in
+        /*:/*:/*)
+          case "$abs_builddir" in
+            *[[[:space:]]]*)
+              AC_MSG_ERROR([the build directory path must not contain whitespace: $abs_builddir])
+              ;;
+          esac
+          USEARCH_RT_DIR="$abs_builddir/.usearch-rt"
+          mkdir -p "$USEARCH_RT_DIR"
+          echo "INPUT($usearch_a_stdcxx)" > "$USEARCH_RT_DIR/libstdc++.so"
+          echo "INPUT($usearch_a_gcc $usearch_a_gcc_eh)" > "$USEARCH_RT_DIR/libgcc_s.so"
+          usearch_save_LDFLAGS="$LDFLAGS"
+          LDFLAGS="$LDFLAGS -L$USEARCH_RT_DIR"
+          AC_LANG_PUSH([C++])
+          AC_LINK_IFELSE(
+            [AC_LANG_PROGRAM([[#include <string>
+namespace __gnu_cxx { void __freeres(); }]],
+              [[__gnu_cxx::__freeres(); std::string s("x"); return static_cast<int>(s.size()) - 1;]])],
+            [usearch_static_rt=yes],
+            [usearch_static_rt=no])
+          AC_LANG_POP([C++])
+          LDFLAGS="$usearch_save_LDFLAGS"
+          if test "$usearch_static_rt" = "yes"; then
+            USEARCH_RT_LIBADD="-L$USEARCH_RT_DIR -Wl,--exclude-libs,ALL"
+            case "$usearch_so_pthread" in
+              /*) USEARCH_RT_LIBADD="$USEARCH_RT_LIBADD -Wl,--push-state,--no-as-needed -lpthread -Wl,--pop-state" ;;
+            esac
+            USEARCH_BRIDGE_FLAGS="$USEARCH_BRIDGE_FLAGS -DUSEARCH_PHP_STATIC_CXX_RUNTIME=1"
+            AC_MSG_RESULT([yes, linking libstdc++ and libgcc statically])
+          else
+            AC_MSG_RESULT([no, the archived runtime does not link with this compiler])
+            AC_MSG_WARN([static libstdc++/libgcc are unusable here; the module will need libstdc++ at run time])
+          fi
+          ;;
+        *)
+          AC_MSG_RESULT([no, keeping the dynamic C++ runtime])
+          AC_MSG_WARN([static libstdc++/libgcc archives not found; the module will need libstdc++ at run time])
+          ;;
+      esac
+      ;;
+  esac
+
   dnl Hardware-accelerated metrics. Upstream ships its SIMD kernels as a
   dnl dynamic-dispatch library: `c/numkong.c` plus one `dispatch_<dtype>.c` per
   dnl scalar type. Without it, every metric falls back to the auto-vectorised
@@ -195,7 +260,7 @@ if test "$PHP_USEARCH" != "no"; then
       if test ! -f "$USEARCH_LINK_SCRIPT"; then
         AC_MSG_ERROR([usearch.map not found at $USEARCH_LINK_SCRIPT; it is part of the extension sources])
       fi
-      USEARCH_SHARED_LIBADD="$USEARCH_SHARED_LIBADD -Wl,--version-script=$USEARCH_LINK_SCRIPT -Wl,--gc-sections -Wl,-z,relro,-z,now,-z,noexecstack"
+      USEARCH_SHARED_LIBADD="$USEARCH_SHARED_LIBADD $USEARCH_RT_LIBADD -Wl,--version-script=$USEARCH_LINK_SCRIPT -Wl,--gc-sections -Wl,-z,relro,-z,now,-z,noexecstack"
       ;;
   esac
 

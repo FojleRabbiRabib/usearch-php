@@ -54,6 +54,15 @@ int usearch_php_quantize(void const *from, size_t dimensions, int scalar_kind, v
  */
 int usearch_php_index_distance(usearch_index_t index, void const *a, void const *b, double *out);
 
+/**
+ * Releases the C++ runtime's one-time allocations when the runtime is linked into
+ * this module (libstdc++ keeps an emergency exception pool that no destructor
+ * frees, so it would be reported as lost once the module is unloaded). A no-op
+ * when the runtime is shared with the host process. Call once, at module shutdown,
+ * after the last use of the native core.
+ */
+void usearch_php_runtime_release(void);
+
 #ifdef __cplusplus
 }
 #endif

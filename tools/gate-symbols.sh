@@ -34,8 +34,8 @@ if [ "$COUNT" != "1" ] || [ "$EXPORTED" != "get_module" ]; then
 fi
 
 # 2. No vendored C++ symbol leaked into the undefined set in a way that would
-#    bind to a system copy at load time (the C++ runtime is allowed; upstream
-#    API symbols are not, because they are defined, not undefined).
+#    bind to a system copy at load time (upstream API symbols are defined in the
+#    module, never undefined; tools/gate-linkage.sh covers the C++ runtime).
 if nm -D --undefined-only "$MODULE" | grep -qE ' (usearch_|nk_|sz_)'; then
 	echo "FAIL: vendored symbols are undefined, not statically linked:" >&2
 	nm -D --undefined-only "$MODULE" | grep -E ' (usearch_|nk_|sz_)' >&2

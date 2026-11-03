@@ -8,6 +8,7 @@
 *.obj
 *.dep
 .libs/
+.usearch-rt/
 modules/
 /build/
 autom4te.cache/
