@@ -36,7 +36,9 @@ jobs:
             os: ubuntu-22.04-arm
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       - name: Build and gate PHP ${{ matrix.php }} in the EL8 image
         run: tools/build-el8.sh ${{ matrix.php }} dist/el8
@@ -51,7 +53,7 @@ jobs:
           tools/release-build.sh
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-php${{ matrix.php }}-${{ matrix.arch }}
           path: build/dist/*
@@ -67,7 +69,9 @@ jobs:
         php: ['8.3', '8.4', '8.5']
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
 
       # The Alpine environment runs through an explicit docker step rather than
       # a job-level container: checkout and artifact upload must stay on the
@@ -85,7 +89,7 @@ jobs:
           '
 
       - name: Upload release assets
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-php${{ matrix.php }}-musl-x86_64
           path: build/dist/*
@@ -106,12 +110,13 @@ jobs:
       COSIGN_SHA256: '4629c757b7618056f8ddd7e2625ae9fdd94c0372a65049520bc7d9df9efc7f71'
     steps:
       - name: Check out source
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           fetch-depth: 0
+          persist-credentials: false
 
       - name: Download built assets
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: release-*
           merge-multiple: true
