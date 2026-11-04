@@ -1,0 +1,9 @@
+# Documented rpmlint filters for the usearch packages. Each one needs a reason.
+
+# The License tag is an SPDX identifier, the current Fedora policy; the rpmlint 1.x in
+# the EL8 packaging image predates it and only knows the legacy names (such as "ASL 2.0").
+addFilter("invalid-license Apache-2.0")
+
+# The versioned layout installs into Remi's versioned PHP tree, /opt/remi/phpNN/root, because
+# that is where that PHP loads its extensions from; the extension must live beside it.
+addFilter("php[0-9]+-php-usearch.*: E: dir-or-file-in-opt /opt/remi/php[0-9]+/root/")

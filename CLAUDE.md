@@ -36,6 +36,9 @@ is reproducible from the pins in `tools/fetch-usearch.sh`.
 | `tools/el8/`, `tools/build-el8.sh` | AlmaLinux 8 build image and its driver: the glibc release binaries are built and gated here |
 | `tools/build-deb.sh`, `tools/deb/` | Wraps the EL8-built module in `php<N>-usearch` (never rebuilds it), lints it, and proves a second assembly is byte-identical |
 | `tools/test-deb.sh` | Installs the deb in a clean Debian/Ubuntu container and runs the lifecycle (install, upgrade, `phpdismod`, remove, reinstall, purge); `EXPECT_REFUSE=1` asserts a wrong-PHP package is refused |
+| `tools/build-rpm.sh`, `tools/rpm/` | Wraps the EL8-built module in `php-usearch` (Remi base layout) and `php<N>-php-usearch` (Remi versioned layout), never rebuilding it; rpmlint must report a clean run and a second assembly under another umask must be byte-identical |
+| `tools/test-rpm.sh` | Installs the rpm in a clean EL or Fedora container with Remi PHP and runs the lifecycle (install, upgrade keeping an edited ini as `.rpmnew`, erase leaving `.rpmsave`, reinstall); `EXPECT_REFUSE=1` asserts a wrong-PHP package is refused on its ABI requirement |
+| `tools/check-asset-names.sh`, `tools/test-check-asset-names.sh` | Fails when two release assets (across the deb, rpm, module and zip directories) share a name, case-insensitively; the second script is its unit test |
 | `tools/gate-hardening.sh` | RELRO, BIND_NOW, non-executable stack, no RPATH; rerun on the stripped module |
 | `tools/gate-linkage.sh` | Asserts C-library-only `NEEDED` entries, no `GLIBCXX`/`CXXABI` references, and the glibc ceiling |
 | `tests/phpt/` | Behavioural suite |
