@@ -63,6 +63,25 @@ jobs:
       - name: Recall@10 quality gate
         run: php -n -d extension=modules/usearch.so tests/quality/recall.php
 
+  pins:
+    name: Pin lint and release-tooling unit tests
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Every action and image is pinned, and only finalize may mint an OIDC token
+        run: tools/lint-workflow-pins.sh .github/workflows/*.yml tools/el8/Dockerfile tools/deb/Dockerfile tools/rpm/Dockerfile tools/sign/Dockerfile
+
+      - name: Pin lint unit test
+        run: tools/test-lint-workflow-pins.sh
+
+      - name: Asset-name check unit test
+        run: tools/test-check-asset-names.sh
+
   quality:
     name: Code style and static analysis
     runs-on: ubuntu-24.04

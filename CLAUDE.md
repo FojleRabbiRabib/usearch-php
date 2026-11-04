@@ -39,6 +39,8 @@ is reproducible from the pins in `tools/fetch-usearch.sh`.
 | `tools/build-rpm.sh`, `tools/rpm/` | Wraps the EL8-built module in `php-usearch` (Remi base layout) and `php<N>-php-usearch` (Remi versioned layout), never rebuilding it; rpmlint must report a clean run and a second assembly under another umask must be byte-identical |
 | `tools/test-rpm.sh` | Installs the rpm in a clean EL or Fedora container with Remi PHP and runs the lifecycle (install, upgrade keeping an edited ini as `.rpmnew`, erase leaving `.rpmsave`, reinstall); `EXPECT_REFUSE=1` asserts a wrong-PHP package is refused on its ABI requirement |
 | `tools/check-asset-names.sh`, `tools/test-check-asset-names.sh` | Fails when two release assets (across the deb, rpm, module and zip directories) share a name, case-insensitively; the second script is its unit test |
+| `tools/sign-rpm.sh`, `tools/sign/` | Signs the release rpms inside a digest-pinned EL8 image with a key from the environment, only after checking every rpm against the SHA-256 list the build job recorded; `tools/test-sign-rpm.sh` proves it with a throwaway key and verifies on EL8, EL9, EL10 and Fedora |
+| `tools/lint-workflow-pins.sh`, `tools/test-lint-workflow-pins.sh` | Fails on any action not pinned to a commit SHA, any image without a digest, and any `id-token: write` outside the `finalize` job; the second script is its unit test |
 | `tools/gate-hardening.sh` | RELRO, BIND_NOW, non-executable stack, no RPATH; rerun on the stripped module |
 | `tools/gate-linkage.sh` | Asserts C-library-only `NEEDED` entries, no `GLIBCXX`/`CXXABI` references, and the glibc ceiling |
 | `tests/phpt/` | Behavioural suite |
@@ -82,6 +84,11 @@ exported (asserted by `tools/build.sh` and `tools/gate-symbols.sh`). The ratchet
 (different hardware is a `--record`, never a cross-machine comparison). The recall gate needs the
 Fashion-MNIST dataset, which `tools/fetch-dataset.sh` fetches and SHA-256-verifies into the
 gitignored `vendor-data/`; it is never committed.
+
+Changes to the release tooling are verified with `tools/test-lint-workflow-pins.sh`,
+`tools/test-check-asset-names.sh`, `tools/lint-workflow-pins.sh .github/workflows/*.yml tools/*/Dockerfile`,
+`actionlint`, and, for signing, `tools/test-sign-rpm.sh` (a throwaway key, nothing real); package
+changes are verified with `tools/test-deb.sh` and `tools/test-rpm.sh` over the distro matrix.
 
 The release binary for glibc Linux is built by `tools/build-el8.sh <php-version> [out-dir]` (default
 `dist/el8`; `make clean` deletes every `*.so` under the tree, so package the artifacts before a local

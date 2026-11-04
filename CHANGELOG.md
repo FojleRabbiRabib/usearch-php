@@ -19,6 +19,12 @@ release notes. 0.1.0 vendored USearch 2.26.2.
   paths) and gates it against the committed baseline `tests/quality/benchmark-baseline.json`,
   failing past per-metric bands (20% query latency, 25% build rate, 2% memory and footprint)
   and on host-class mismatches; `--record` re-baselines after deliberate improvements.
+- Debian packages (`php<N>-usearch`) and RPM packages for both Remi layouts (`php-usearch`
+  and `php<N>-php-usearch`), built from the same gated EL8 module and reproducible byte for
+  byte, for PHP 8.3, 8.4 and 8.5; the release workflow builds them for x86_64 and arm64. The
+  RPMs are signed in a separate job, and every release asset also gets a cosign bundle.
+  `tools/test-deb.sh` and `tools/test-rpm.sh` install, upgrade, remove and reinstall a package in
+  clean Debian, Ubuntu, EL and Fedora containers.
 
 ### Changed
 - The C++ runtime (libstdc++ and libgcc) is linked into the module on ELF platforms where the
@@ -32,6 +38,10 @@ release notes. 0.1.0 vendored USearch 2.26.2.
 - Prebuilt glibc binaries are stripped of debug information once, in the EL8 build, before the
   gates run: the PIE zips and bare `.so` shrink, and crash backtraces from them show no symbol
   names.
+- The release workflow refuses a tag that is not `vX.Y.Z` or `vX.Y.Z-<word><number>`, marks
+  `-` tags as prereleases, and creates the release as a draft that it publishes only after
+  every asset is attached and checked; every action and image in the workflows is pinned by
+  commit SHA or digest, and a lint fails the build on any floating reference.
 - The benchmark drivers (`tools/benchmark.php`, `tools/benchmark-compare.php`) are tracked in
   the repository as development tooling; they remain outside the PECL package manifest.
 

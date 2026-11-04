@@ -41,6 +41,13 @@ mkdir -p "$work/d"
 : > "$work/d/usearch-php8.3-el8-x86_64.phpapi"
 expect 0 "a .phpapi file is not an asset" "$work/c" "$work/d"
 
+mkdir -p "$work/e" "$work/f"
+: > "$work/e/SHA256SUMS"
+: > "$work/f/SHA256SUMS"
+: > "$work/e/one.zip"
+: > "$work/f/two.zip"
+expect 0 "per-cell SHA256SUMS files are not assets" "$work/e" "$work/f"
+
 mkdir -p "$work/empty"
 expect 1 "no files at all is an error" "$work/empty"
 expect 1 "a missing directory is an error" "$work/missing"

@@ -9,9 +9,69 @@ permissions:
   contents: read
 
 jobs:
+  # Everything that can be refused from the tag alone is refused here, before any build.
+  gate:
+    name: Check the tag
+    runs-on: ubuntu-22.04
+    outputs:
+      base: ${{ steps.tag.outputs.base }}
+      prerelease: ${{ steps.tag.outputs.prerelease }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify tag shape, provenance, version lockstep, and rolled changelog
+        id: tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="${GITHUB_REF_NAME}"
+          if ! [[ "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[a-z]+[0-9]+)?$ ]]; then
+            echo "FAIL: tag '$tag' is not vX.Y.Z or vX.Y.Z-<word><number>" >&2
+            exit 1
+          fi
+          base="${tag#v}"
+          ext_version="$(awk -F'"' '/#define PHP_USEARCH_VERSION/ {print $2}' php_usearch.h)"
+          if [ "$base" != "$ext_version" ]; then
+            echo "FAIL: tag $tag base version '$base' != PHP_USEARCH_VERSION '$ext_version'" >&2
+            exit 1
+          fi
+          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
+            echo "FAIL: tag $tag is not on main" >&2
+            exit 1
+          fi
+          if ! grep -qE "^## $base( |$|-)" CHANGELOG.md; then
+            echo "FAIL: CHANGELOG.md has no '## $base' section; roll [Unreleased] first" >&2
+            exit 1
+          fi
+          prerelease=false
+          [[ "$tag" == *-* ]] && prerelease=true
+          printf 'base=%s\nprerelease=%s\n' "$base" "$prerelease" >> "$GITHUB_OUTPUT"
+
+      - name: Lint pins and run the tooling unit tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          tools/lint-workflow-pins.sh .github/workflows/*.yml tools/el8/Dockerfile tools/deb/Dockerfile tools/rpm/Dockerfile tools/sign/Dockerfile
+          tools/test-lint-workflow-pins.sh
+          tools/test-check-asset-names.sh
+
   build:
     name: Build PHP ${{ matrix.php }} (${{ matrix.arch }})
+    needs: gate
     runs-on: ${{ matrix.os }}
+    # One static output per cell: a matrix job's outputs are merged by name, so each cell
+    # fills only its own key. The signing job refuses an empty or missing key.
+    outputs:
+      rpm_sha_83_x86_64: ${{ matrix.key == '83_x86_64' && steps.rpmsums.outputs.sums || '' }}
+      rpm_sha_84_x86_64: ${{ matrix.key == '84_x86_64' && steps.rpmsums.outputs.sums || '' }}
+      rpm_sha_85_x86_64: ${{ matrix.key == '85_x86_64' && steps.rpmsums.outputs.sums || '' }}
+      rpm_sha_83_aarch64: ${{ matrix.key == '83_aarch64' && steps.rpmsums.outputs.sums || '' }}
+      rpm_sha_84_aarch64: ${{ matrix.key == '84_aarch64' && steps.rpmsums.outputs.sums || '' }}
+      rpm_sha_85_aarch64: ${{ matrix.key == '85_aarch64' && steps.rpmsums.outputs.sums || '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -19,21 +79,27 @@ jobs:
           - php: '8.3'
             arch: x86_64
             os: ubuntu-22.04
+            key: '83_x86_64'
           - php: '8.4'
             arch: x86_64
             os: ubuntu-22.04
+            key: '84_x86_64'
           - php: '8.5'
             arch: x86_64
             os: ubuntu-22.04
+            key: '85_x86_64'
           - php: '8.3'
             arch: aarch64
             os: ubuntu-22.04-arm
+            key: '83_aarch64'
           - php: '8.4'
             arch: aarch64
             os: ubuntu-22.04-arm
+            key: '84_aarch64'
           - php: '8.5'
             arch: aarch64
             os: ubuntu-22.04-arm
+            key: '85_aarch64'
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -52,21 +118,63 @@ jobs:
           sudo apt-get update && sudo apt-get install -y zip
           tools/release-build.sh
 
+      - name: Build the deb and the rpms from the gated module
+        run: |
+          set -euo pipefail
+          tools/build-deb.sh ${{ matrix.php }} dist/el8 dist/deb
+          tools/build-rpm.sh ${{ matrix.php }} dist/el8 dist/rpm
+
+      - name: Record the SHA-256 of the unsigned rpms
+        id: rpmsums
+        shell: bash
+        run: |
+          set -euo pipefail
+          sums="$(cd dist/rpm && sha256sum -- *.rpm)"
+          delimiter="SUMS_$(od -An -N8 -tx1 /dev/urandom | tr -d ' \n')"
+          {
+            printf 'sums<<%s\n' "$delimiter"
+            printf '%s\n' "$sums"
+            printf '%s\n' "$delimiter"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Upload release assets
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: release-php${{ matrix.php }}-${{ matrix.arch }}
           path: build/dist/*
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
+
+      - name: Upload the deb
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: deb-php${{ matrix.php }}-${{ matrix.arch }}
+          path: dist/deb/*.deb
+          if-no-files-found: error
+          retention-days: 1
+
+      - name: Upload the unsigned rpms
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rpm-unsigned-php${{ matrix.php }}-${{ matrix.arch }}
+          path: dist/rpm/*.rpm
+          if-no-files-found: error
+          retention-days: 1
 
   build-musl:
     name: Build PHP ${{ matrix.php }} musl (x86_64)
+    needs: gate
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
-        php: ['8.3', '8.4', '8.5']
+        include:
+          - php: '8.3'
+            image: 'php:8.3-alpine@sha256:86a7a8f46bbf73120a19cf72246f606b6de9aaa84a00971c25d187fbae44c211'
+          - php: '8.4'
+            image: 'php:8.4-alpine@sha256:d8784155c4d37986be9ddd7a8950df7e78998cc48e35472cd69e2b9371424a65'
+          - php: '8.5'
+            image: 'php:8.5-alpine@sha256:e899a75c775804e5466dbd9c96b31f8b6c6ae2ddb053a8466223a0c32992ff8e'
     steps:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
@@ -79,10 +187,11 @@ jobs:
       - name: Build, gate, and package PHP ${{ matrix.php }} (musl)
         env:
           RELEASE_TAG: ${{ github.ref_name }}
+          MUSL_IMAGE: ${{ matrix.image }}
         run: |
           set -euo pipefail
           docker run --rm -e GIT_REV="$GITHUB_SHA" -e RELEASE_TAG="$RELEASE_TAG" \
-            -v "$PWD":/src -w /src "php:${{ matrix.php }}-alpine" sh -c '
+            -v "$PWD":/src -w /src "$MUSL_IMAGE" sh -c '
             set -eu
             apk add --no-cache bash g++ make autoconf zip
             ABIS=${{ matrix.php }} LIBC=musl tools/release-build.sh
@@ -94,16 +203,80 @@ jobs:
           name: release-php${{ matrix.php }}-musl-x86_64
           path: build/dist/*
           if-no-files-found: error
-          retention-days: 3
+          retention-days: 1
+
+  # Signs the rpms and nothing else. It runs in a protected environment that holds the key,
+  # uses first-party actions only, and signs a package only if its SHA-256 equals the one
+  # the build job recorded in its own job output.
+  sign:
+    name: Sign the rpms
+    needs: [gate, build]
+    runs-on: ubuntu-22.04
+    environment: release-signing
+    steps:
+      - name: Check out source
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Download the unsigned rpms, one directory per cell
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: rpm-unsigned-*
+          path: unsigned
+
+      - name: Verify against the build job's hashes and sign
+        shell: bash
+        env:
+          BUILD_OUTPUTS: ${{ toJSON(needs.build.outputs) }}
+          RPM_SIGNING_KEY: ${{ secrets.RPM_SIGNING_KEY }}
+          RPM_SIGNING_PASSPHRASE: ${{ secrets.RPM_SIGNING_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          mkdir -p signed
+          # One signing image for all six cells.
+          export SIGN_IMAGE="usearch-sign:$GITHUB_RUN_ID"
+          docker build -q -t "$SIGN_IMAGE" tools/sign >/dev/null
+          for cell in 83_x86_64 84_x86_64 85_x86_64 83_aarch64 84_aarch64 85_aarch64; do
+            php="${cell%%_*}"
+            arch="${cell#*_}"
+            dir="unsigned/rpm-unsigned-php${php:0:1}.${php:1}-${arch}"
+            sums="$(jq -r --arg key "rpm_sha_${cell}" '.[$key] // ""' <<<"$BUILD_OUTPUTS")"
+            if [ -z "$sums" ]; then
+              echo "FAIL: the build job published no hashes for cell $cell" >&2
+              exit 1
+            fi
+            [ -d "$dir" ] || { echo "FAIL: no unsigned rpms were delivered for cell $cell" >&2; exit 1; }
+            printf '%s\n' "$sums" > "$RUNNER_TEMP/sums-$cell"
+            tools/sign-rpm.sh "$RUNNER_TEMP/sums-$cell" "$dir"
+            cp -p -- "$dir"/*.rpm signed/
+          done
+          # Two layouts per cell: nothing outside the six verified cells is released.
+          count="$(find signed -maxdepth 1 -name '*.rpm' | wc -l)"
+          if [ "$count" -ne 12 ]; then
+            echo "FAIL: expected 12 signed rpms, found $count" >&2
+            exit 1
+          fi
+
+      - name: Upload the signed rpms
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: rpm-signed
+          path: signed/*.rpm
+          if-no-files-found: error
+          retention-days: 1
 
   finalize:
     name: Assemble and publish release
-    needs: [build, build-musl]
+    needs: [gate, build, build-musl, sign]
     runs-on: ubuntu-22.04
     permissions:
+      actions: write
       contents: write
       id-token: write
     env:
+      RELEASE_BASE: ${{ needs.gate.outputs.base }}
+      PRERELEASE: ${{ needs.gate.outputs.prerelease }}
       SYFT_VERSION: '1.52.0'
       SYFT_SHA256: 'caeedb81fb0491615f1ebd1761e4145d41ee86dd2cc7bf80669f9f5ad9d6133d'
       COSIGN_VERSION: '3.1.3'
@@ -112,36 +285,67 @@ jobs:
       - name: Check out source
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
-          fetch-depth: 0
           persist-credentials: false
 
-      - name: Download built assets
+      # One directory per artifact, never merged: a merge would silently overwrite two
+      # files that share a name, and the name check below could then never see them. The
+      # unsigned rpms are not downloaded at all; only the signed bytes are released.
+      - name: Download built assets, one directory per artifact
         uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
         with:
           pattern: release-*
-          merge-multiple: true
-          path: build/dist
+          path: artifacts
 
-      - name: Verify tag provenance, version lockstep, and rolled changelog
+      - name: Download the debs
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          pattern: deb-*
+          path: artifacts
+
+      - name: Download the signed rpms
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: rpm-signed
+          path: artifacts/rpm-signed
+
+      - name: Refuse duplicate asset names, then flatten
         shell: bash
         run: |
           set -euo pipefail
-          tag="${GITHUB_REF_NAME}"
-          base="${tag#v}"
-          ext_version="$(awk -F'"' '/#define PHP_USEARCH_VERSION/ {print $2}' php_usearch.h)"
-          if [ "$base" != "$ext_version" ]; then
-            echo "FAIL: tag $tag base version '$base' != PHP_USEARCH_VERSION '$ext_version'" >&2
+          dirs=(artifacts/*/)
+          tools/check-asset-names.sh "${dirs[@]}"
+          mkdir -p build/dist
+          for dir in "${dirs[@]}"; do
+            find "$dir" -maxdepth 2 -type f ! -name '*.phpapi' ! -name 'SHA256SUMS' -exec cp -p -- {} build/dist/ \;
+          done
+
+      # The signing job already verified these; a second look here costs nothing and means a
+      # package that was never signed, or signed by a second key, cannot be released.
+      - name: Check all twelve rpms carry one signature key
+        shell: bash
+        run: |
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq rpm
+          shopt -s nullglob
+          rpms=(artifacts/rpm-signed/*.rpm)
+          [ "${#rpms[@]}" -eq 12 ] || { echo "FAIL: expected 12 signed rpms, found ${#rpms[@]}" >&2; exit 1; }
+          keys=""
+          for f in "${rpms[@]}"; do
+            sig="$(rpm -qp --qf '%{RSAHEADER:pgpsig}' "$f")"
+            if ! [[ "$sig" =~ Key\ ID\ ([0-9a-f]{16}) ]]; then
+              echo "FAIL: $f carries no signature ($sig)" >&2
+              exit 1
+            fi
+            keys+="${BASH_REMATCH[1]}"$'\n'
+          done
+          unique="$(printf '%s' "$keys" | sort -u)"
+          if [ "$(wc -l <<<"$unique")" -ne 1 ]; then
+            echo "FAIL: the rpms are signed by more than one key:" >&2
+            echo "$unique" >&2
             exit 1
           fi
-          if ! git merge-base --is-ancestor "$GITHUB_SHA" refs/remotes/origin/main; then
-            echo "FAIL: tag $tag is not on main" >&2
-            exit 1
-          fi
-          if ! grep -qE "^## $base( |$|-)" CHANGELOG.md; then
-            echo "FAIL: CHANGELOG.md has no '## $base' section; roll [Unreleased] first" >&2
-            exit 1
-          fi
-          printf 'RELEASE_BASE=%s\n' "$base" >> "$GITHUB_ENV"
+          echo "all 12 rpms signed by key $unique"
 
       - name: Generate the SBOM (syft, pinned)
         shell: bash
@@ -172,6 +376,9 @@ jobs:
           printf '%s  %s\n' "$COSIGN_SHA256" "$RUNNER_TEMP/cosign" | sha256sum -c -
           chmod +x "$RUNNER_TEMP/cosign"
 
+      # Keyless: the certificate identity is this workflow file at the release tag, which
+      # is what the publisher pins. The packages are signed here, after the rpm signature,
+      # so the bundle covers the final bytes.
       - name: Sign every release asset (cosign keyless)
         shell: bash
         run: |
@@ -179,16 +386,68 @@ jobs:
           cd build/dist
           for f in *; do
             [ -f "$f" ] || continue
-            [ "$f" = "SHA256SUMS" ] && continue
             "$RUNNER_TEMP/cosign" sign-blob --yes --bundle "$f.bundle" "$f"
           done
 
-      - name: Create the GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
+      # GitHub rewrites characters outside this set in an uploaded asset name, so a built
+      # name that contains one would not be the name the publisher later looks for.
+      - name: Assert every asset name survives GitHub unchanged
+        shell: bash
         run: |
           set -euo pipefail
-          gh release create "$GITHUB_REF_NAME" \
+          bad=0
+          for f in build/dist/*; do
+            name="$(basename "$f")"
+            if ! [[ "$name" =~ ^[A-Za-z0-9_][A-Za-z0-9._-]*$ ]]; then
+              echo "FAIL: asset name '$name' would be rewritten by GitHub" >&2
+              bad=1
+            fi
+          done
+          [ "$bad" -eq 0 ]
+
+      # Created as a draft and published last: assets cannot be added to an immutable
+      # release, and the release webhook must never fire on a half-populated release.
+      - name: Create the draft release and attach every asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          flags=(--draft)
+          [ "$PRERELEASE" = "true" ] && flags+=(--prerelease)
+          gh release create "$GITHUB_REF_NAME" "${flags[@]}" \
             --title "usearch-php $GITHUB_REF_NAME" \
-            --notes "Static per-ABI builds of the usearch extension for PHP 8.3, 8.4, and 8.5 (glibc and musl, x86_64 and arm64). See CHANGELOG.md for this release's changes; verify assets with SHA256SUMS and the cosign bundles." \
+            --notes "Static per-ABI builds of the usearch extension for PHP 8.3, 8.4, and 8.5 (glibc and musl, x86_64 and arm64), plus Debian and RPM packages. See CHANGELOG.md for this release's changes; verify assets with SHA256SUMS and the cosign bundles." \
             build/dist/*
+
+      - name: Check the draft holds exactly the assets that were built
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected="$(find build/dist -maxdepth 1 -type f -printf '%f\n' | sort)"
+          uploaded="$(gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | sort)"
+          if [ "$expected" != "$uploaded" ]; then
+            echo "FAIL: the draft's assets differ from the built set" >&2
+            diff <(printf '%s\n' "$expected") <(printf '%s\n' "$uploaded") >&2 || true
+            exit 1
+          fi
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "$GITHUB_REF_NAME" --draft=false
+
+      # The release now holds every byte; the intermediate artifacts only cost storage.
+      # Failing to delete one must not fail a release that is already published.
+      - name: Delete this run's intermediate artifacts
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -uo pipefail
+          ids="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts" --paginate --jq '.artifacts[].id')" || { echo "could not list artifacts"; exit 0; }
+          for id in $ids; do
+            gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/artifacts/${id}" >/dev/null || echo "could not delete artifact $id"
+          done

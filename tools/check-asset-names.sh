@@ -17,8 +17,10 @@ set -euo pipefail
 names=""
 for dir in "$@"; do
 	[ -d "$dir" ] || { echo "FAIL: $dir is not a directory" >&2; exit 1; }
-	# *.phpapi files are build metadata next to the modules, never uploaded.
-	listing="$(find "$dir" -type f ! -name '*.phpapi' -printf '%f\n')"
+	# *.phpapi files are build metadata next to the modules, never uploaded. Every build
+	# cell writes its own SHA256SUMS; the release job discards them all and regenerates
+	# one over the final set, so they are not assets.
+	listing="$(find "$dir" -type f ! -name '*.phpapi' ! -name 'SHA256SUMS' -printf '%f\n')"
 	names+="${listing}"$'\n'
 done
 

@@ -1,0 +1,56 @@
+name: Tool images
+
+# The packaging and signing images pin exact distribution builds; when a repository drops
+# one, a release would stop on tag day. They are rebuilt without any layer cache, because a
+# cached `dnf` layer would stay green after the repository dropped the pinned build, which is
+# the very thing this workflow exists to catch. It runs when an image or this file changes,
+# and weekly otherwise.
+on:
+  push:
+    branches: [main, develop]
+    paths:
+      - 'tools/el8/**'
+      - 'tools/deb/**'
+      - 'tools/rpm/**'
+      - 'tools/sign/**'
+      - '.github/workflows/tool-images.yml'
+  pull_request:
+    branches: [main, develop]
+    paths:
+      - 'tools/el8/**'
+      - 'tools/deb/**'
+      - 'tools/rpm/**'
+      - 'tools/sign/**'
+      - '.github/workflows/tool-images.yml'
+  schedule:
+    - cron: '17 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tool-images:
+    name: Release tool images still build (${{ matrix.arch }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x86_64
+            os: ubuntu-24.04
+          - arch: aarch64
+            os: ubuntu-24.04-arm
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+
+      - name: Build the EL8 build, deb, rpm and signing images
+        run: |
+          set -euo pipefail
+          for dir in el8 deb rpm sign; do
+            docker build --no-cache -q -t "usearch-tool-$dir" "tools/$dir" >/dev/null
+          done
